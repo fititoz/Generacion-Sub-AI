@@ -1,0 +1,130 @@
+# config.ini
+[API]
+# Consigue tu API Key de Google AI Studio o Google Cloud Console
+# ¡NO COMPARTAS ESTE ARCHIVO CON TU CLAVE SI USAS GIT! (ya incluido en .gitignore)
+gemini_api_key = YOUR_API_KEY_HERE
+
+[PATHS]
+# Opcional: Descomenta y edita si MKVToolNix NO está en el PATH
+# mkvtoolnix_dir = C:\Program Files\MKVToolNix
+
+[TRANSLATION]
+# Idioma destino (para prompt y código MKV)
+target_language_name = Español Latino (sin censura)
+target_language_codes = es-419, lat, es, spa, und
+# Idioma fuente preferido para seleccionar pista
+preferred_source_lang = fre
+# Palabras clave (separadas por coma) para identificar variantes en nombres de pista
+# Usadas SOLO si el código de idioma es genérico (spa/es) y el objetivo no lo es.
+# Dejar vacío si no se quiere usar esta heurística.
+latino_keywords = latino, latin, latam, latin america, español americano, animo, Spanish[LAT]
+spain_keywords = españa, spain, castellano, castilian, español europeo, iberian, european, Spanish[ESP]
+# Modelos preferidos (en orden, el script elegirá el primero disponible)
+# Puedes añadir/quitar modelos de la lista que te da el script
+preferred_models =
+    gemini-pro-latest 
+    gemini-3.1-pro-preview 
+    gemini-2.5-pro 
+    gemini-flash-latest 
+    gemini-3-flash-preview 
+    gemini-2.5-flash 
+    gemini-flash-lite-latest 
+    gemini-2.5-flash-lite 
+    gemini-2.0-flash
+
+
+# Tamaño del lote para enviar a la API
+batch_size = 50
+# Delay en segundos entre llamadas API (lotes o fallback individual)
+api_call_delay = 5.0
+# Máximo de reintentos para llamadas API fallidas (errores de red/servidor)
+api_max_retries = 3
+# Tiempo inicial de espera antes del primer reintento (segundos) - se duplicará en cada reintento
+api_retry_initial_delay = 20
+# Timeout en segundos para llamadas API individuales (fallback)
+api_single_timeout = 120
+# Timeout en segundos para llamadas API por lotes
+api_batch_timeout = 300
+# Segundos a esperar si todos los modelos alcanzan rate limit (error 429)
+rate_limit_wait_seconds = 60
+# Máximo de reintentos globales (reinicio de modelos) antes de fallo fatal
+rate_limit_max_global_retries = 3
+
+[SETTINGS]
+# ¿Intentar añadir el subtítulo traducido al MKV? (yes/no)
+add_subs_to_mkv = yes
+# ¿Marcar la nueva pista de subtítulos como 'default'? (yes/no)
+set_new_sub_default = yes
+# Nombre para la pista de subtítulos traducida dentro del MKV
+translated_track_name = Español Latino (Gemini AI)
+# Nombre del archivo MKV de salida (se añade al nombre original)
+output_mkv_suffix = .traducido
+# Habilitar caché de traducciones en memoria (reduce llamadas API si hay líneas repetidas)
+enable_translation_cache = yes
+# ¿Reemplazar archivo MKV original con el nuevo archivo traducido? (yes/no)
+# Si es 'no', se creará un archivo nuevo con el sufijo definido en 'output_mkv_suffix'.
+# ¡ADVERTENCIA: 'yes' SOBRESCRIBIRÁ TU ARCHIVO ORIGINAL!
+replace_original_mkv = yes
+# Tag requerido en Sonarr para ejecutar la traducción (dejar vacío para ejecutar siempre)
+# NOTA: required_sonarr_tag NO está implementado en el código actual
+required_sonarr_tag = zigzag
+# ¿Reordenar pistas existentes (Latino primero)? (yes/no)
+reorder_existing_tracks = yes
+#remux o save_separate_sub
+output_action = remux
+
+[PROMPTS]
+# Template para traducciones por lotes.
+# Las líneas siguientes deben tener sangría.
+# IMPORTANTE: Usando sistema de NUMERACIÓN [N]: para consistencia.
+batch_template =
+    Contexto: Estás traduciendo el anime "{series_title}" - Episodio: "{episode_title}".
+    Eres un traductor experto de subtítulos especializado en anime. Traduce las siguientes {batch_size_info} líneas de subtítulos al {target_language_name}, siguiendo estas reglas ESTRICTAMENTE:
+    1.  **Idioma y Tono**: Usa {target_language_name} natural y sin censura. No traduzcas si el texto ya está en español o si es irrelevante. Tuteo por defecto (voseo si aplica a la región).
+    2.  **Preservación**: Mantén SIEMPRE intactos: Nombres propios, términos específicos (Oshiruko, Kunai, etc.), honoríficos japoneses (-san, -chan, -sama).
+    3.  **Formato de Entrada/Salida**: Cada línea viene numerada con el formato [N]: Texto.
+    4.  **DEBES responder manteniendo EXACTAMENTE el mismo formato: [N]: Traducción.**
+    5.  **Placeholders**: Preserva etiquetas como __TAG0__, __TAG1__ EXACTAMENTE en su posición relativa.
+    6.  **Ortografía y Puntuación**: Usa ortografía impecable. Incluye signos de apertura (¿, ¡), tildes correctas y la letra ñ. Evita modismos regionales excesivos a menos que sea necesario para el tono.
+    7.  **Consistencia**: Responde ÚNICAMENTE con las líneas traducidas numeradas. No agregues preámbulos ni explicaciones.
+    
+    Líneas a traducir:
+    {batch_text}
+    
+    Traducciones:
+
+# Template para traducciones individuales (fallback).
+# Las líneas siguientes deben tener sangría.
+single_template =
+    Contexto: {series_title} - {episode_title}.
+    Eres un traductor experto de subtítulos especializado en anime. Traduce la siguiente línea al {target_language_name}:
+    Reglas: Natural y sin censura, preserva nombres/honoríficos, mantén etiquetas __TAGn__. Ortografía impecable (usa tildes, ¿, ¡, ñ).
+    Responde ÚNICAMENTE con la traducción.
+    
+    Texto a traducir:
+    "{text}"
+    
+    Traducción:
+
+[CHAPTERS]
+# Generación automática de capítulos para anime
+# Requiere: ffmpeg, scipy, numpy, requests, soundfile
+# Se instalan vía docker-mods al crear el contenedor
+enabled = yes
+# Carpeta persistente para cachear temas descargados de animethemes.moe
+# Dejar vacío para desactivar caché (descarga cada vez)
+theme_cache_dir = /config/scripts/OPED
+# Timeout en segundos para el cálculo de correlación
+correlation_timeout = 120
+# Umbral mínimo de score de correlación (peak / downsample_factor)
+score_threshold = 2000
+# Tolerancia en segundos para snap al inicio/final del episodio
+snap_tolerance = 4.0
+# Duración del silencio prepuesto al audio del episodio (segundos)
+silence_duration = 5.0
+# Factor de downsampling para correlación (mayor = más rápido, menos preciso)
+downsample_factor = 32
+# Ruta base para limitar generación de capítulos (solo Sonarr)
+# Solo se generarán capítulos para archivos dentro de esta ruta
+# Dejar vacío para generar capítulos para todas las series
+anime_path = /home/biblioteca/Anime

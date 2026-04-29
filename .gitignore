@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# Project
+config.ini
+*.log
+cache/
+nul
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Planning artifacts
+.sisyphus/
