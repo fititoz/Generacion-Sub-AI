@@ -9,6 +9,7 @@ All functions return None on failure — ZERO exceptions propagate to the caller
 import logging
 import os
 import json
+import re
 import time
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -38,8 +39,10 @@ _QUOTE_NORMALIZE = str.maketrans({
 
 
 def _normalize_title(title: str) -> str:
-    """Normalize a title for fuzzy matching: lowercase, normalize quotes."""
-    return title.strip().lower().translate(_QUOTE_NORMALIZE)
+    """Normalize a title for fuzzy matching: lowercase, normalize quotes, strip years."""
+    t = title.strip().lower().translate(_QUOTE_NORMALIZE)
+    t = re.sub(r'\(\d{4}\)', '', t)
+    return ' '.join(t.split())
 
 # Module-level cache — persists for the lifetime of the process
 _title_cache: Optional[Dict[str, str]] = None  # english_lower -> romaji
