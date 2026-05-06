@@ -39,9 +39,10 @@ _QUOTE_NORMALIZE = str.maketrans({
 
 
 def _normalize_title(title: str) -> str:
-    """Normalize a title for fuzzy matching: lowercase, normalize quotes, strip years."""
+    """Normalize a title for fuzzy matching: lowercase, strip years and punctuation."""
     t = title.strip().lower().translate(_QUOTE_NORMALIZE)
     t = re.sub(r'\(\d{4}\)', '', t)
+    t = re.sub(r'[^\w\s]', '', t)  # Strip all punctuation
     return ' '.join(t.split())
 
 # Module-level cache — persists for the lifetime of the process
