@@ -5,6 +5,7 @@ Sets up dual-output logging: DEBUG level to a rotating log file,
 INFO level to stdout console. Called once at application startup.
 """
 import logging
+from logging.handlers import RotatingFileHandler
 import os
 import sys
 from pathlib import Path
@@ -25,7 +26,7 @@ def setup_logging():
     os.makedirs(log_file_path.parent, exist_ok=True)
 
     try:
-        file_handler = logging.FileHandler(log_file_path, mode='a', encoding='utf-8')
+        file_handler = RotatingFileHandler(log_file_path, mode='a', maxBytes=5242880, backupCount=2, encoding='utf-8')
         file_handler.setFormatter(log_formatter_file)
         file_handler.setLevel(log_level_file)
         logger.addHandler(file_handler)
