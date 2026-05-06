@@ -193,7 +193,7 @@ def _parse_animetitles_xml(xml_path: Path) -> Dict[str, str]:
                 title_type = title_elem.get('type', '')
                 lang = title_elem.get(XML_LANG_ATTR, '')
 
-                if lang == 'en' and title_type in ('official', 'syn') and title_elem.text:
+                if lang in ('en', 'x-jat') and title_type in ('official', 'syn') and title_elem.text:
                     en_key = _normalize_title(title_elem.text)
                     if en_key:
                         lookup[en_key] = main_title

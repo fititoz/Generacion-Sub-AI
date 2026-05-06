@@ -3,6 +3,15 @@
 All notable changes to this project will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [2026.05] - 2026-05-06
+
+### Added
+- Sonarr/Radarr environment variable debug logging on execution.
+
+### Fixed
+- Anime chapter lookup ignoring `x-jat` (romaji) aliases in `animetitles.xml`.
+- Season matching failing on Spanish season titles (`Temporada X`), short season tags (`S X`), and titles containing years `(YYYY)`.
+
 ## [2026.03] - 2026-03-20
 
 ### Added

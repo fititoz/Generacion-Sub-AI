@@ -298,6 +298,10 @@ def _extract_context(mode: str) -> dict:
     """
     if mode == 'radarr':
         # --- Radarr Mode ---
+        for key, value in os.environ.items():
+            if key.lower().startswith('radarr_'):
+                logging.debug(f"[Radarr Env] {key}={value}")
+
         event_type = os.environ.get('radarr_eventtype', '')
         if event_type.lower() == 'test':
             logging.info("Evento Radarr 'Test' recibido. Saliendo OK.")
@@ -318,6 +322,10 @@ def _extract_context(mode: str) -> dict:
 
     elif mode == 'sonarr':
         # --- Sonarr Mode ---
+        for key, value in os.environ.items():
+            if key.lower().startswith('sonarr_'):
+                logging.debug(f"[Sonarr Env] {key}={value}")
+
         event_type = os.environ.get('sonarr_eventtype', '')
         if event_type.lower() == 'test':
             logging.info("Evento Sonarr 'Test' recibido. Saliendo OK.")

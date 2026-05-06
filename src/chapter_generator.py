@@ -40,6 +40,9 @@ _SEASON_PATTERNS = [
     re.compile(r'\b[Ss]eason\s+(\d+)\b'),
     re.compile(r'\bPart\s+(\d+)\b'),
     re.compile(r'\bCour\s+(\d+)\b'),
+    re.compile(r'\bTemporada\s+(\d+)\b', re.IGNORECASE),
+    re.compile(r'\b[Ss](\d+)\b'),
+    re.compile(r'\(\d{4}\)'),
 ]
 
 
@@ -105,7 +108,7 @@ def _select_season_entry(anime_list: list, season_number: int, series_title: str
         combined = f"{name} {slug}"
         for pattern in _SEASON_PATTERNS:
             match = pattern.search(combined)
-            if match and int(match.group(1)) == season_number:
+            if match and match.groups() and int(match.group(1)) == season_number:
                 logging.info("[Chapters] Temporada %d encontrada por nombre: '%s'", season_number, name)
                 return entry
 
