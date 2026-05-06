@@ -14,10 +14,10 @@ from src.constants import LOG_FILENAME
 def setup_logging():
     log_formatter_file = logging.Formatter('%(asctime)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s')
     log_formatter_console = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-    log_level_file = logging.DEBUG
+    log_level_file = logging.INFO
     log_level_console = logging.INFO
     logger = logging.getLogger()
-    logger.setLevel(logging.DEBUG)
+    logger.setLevel(logging.INFO)
 
     if logger.hasHandlers():
         logger.handlers.clear()
