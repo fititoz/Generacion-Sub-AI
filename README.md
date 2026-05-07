@@ -73,7 +73,7 @@ with no interactive prompts in Sonarr/Radarr mode.
 ```
 Generacion_Sub_AI.py     — Entry point, mode detection, orchestration
 src/
-├── __version__.py       — CalVer version (2026.06)
+├── __version__.py       — CalVer version (2026.05.1)
 ├── config_manager.py    — config.ini parser
 ├── gemini_client.py     — Gemini API client + retry logic
 ├── model_manager.py     — Model rotation + rate limit tracking
