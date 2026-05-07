@@ -45,6 +45,8 @@ All settings are in `config.ini`:
 | `[CHAPTERS]` | `enabled` | Enable anime chapter generation (yes/no) |
 | `[CHAPTERS]` | `theme_cache_dir` | Directory to cache downloaded theme audio |
 | `[CHAPTERS]` | `anime_path` | Only generate chapters for series under this path |
+| `[CHAPTERS]` | `max_theme_cache_mb` | Maximum size of theme cache in MB (default: 1024) |
+| `[CHAPTERS]` | `theme_cache_ttl_days` | Days to keep theme audio before pruning (default: 120) |
 
 ## Usage
 
@@ -73,7 +75,7 @@ with no interactive prompts in Sonarr/Radarr mode.
 ```
 Generacion_Sub_AI.py     — Entry point, mode detection, orchestration
 src/
-├── __version__.py       — CalVer version (2026.05.1)
+├── __version__.py       — CalVer version (2026.05.2)
 ├── config_manager.py    — config.ini parser
 ├── gemini_client.py     — Gemini API client + retry logic
 ├── model_manager.py     — Model rotation + rate limit tracking

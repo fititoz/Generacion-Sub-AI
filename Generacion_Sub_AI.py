@@ -950,6 +950,16 @@ def main():
     finally:
         if 'translation_cache' in locals() and config.get('ENABLE_TRANSLATION_CACHE'): translation_cache.save_cache()
         else: logging.debug("No se guardó caché.")
+
+        # Prune theme cache at the end of the batch
+        theme_cache_dir = config.get('CHAPTERS_THEME_CACHE_DIR')
+        if config.get('CHAPTERS_ENABLED') and theme_cache_dir and theme_cache_dir.exists():
+            from src.chapter_generator import prune_theme_cache
+            prune_theme_cache(
+                theme_cache_dir, 
+                config.get('MAX_THEME_CACHE_MB', 1024), 
+                config.get('THEME_CACHE_TTL_DAYS', 120)
+            )
     logging.info("--- Proceso Finalizado ---")
 
 if __name__ == "__main__":

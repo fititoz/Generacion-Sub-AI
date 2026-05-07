@@ -51,6 +51,8 @@ class ConfigManager:
             'CHAPTERS': {
                 'enabled': 'no',
                 'theme_cache_dir': '',
+                'max_theme_cache_mb': '1024',
+                'theme_cache_ttl_days': '120',
                 'correlation_timeout': '120',
                 'score_threshold': '2000',
                 'snap_tolerance': '4.0',
@@ -120,6 +122,8 @@ class ConfigManager:
             self.cfg['CHAPTERS_THEME_CACHE_DIR'] = Path(theme_cache_raw) if theme_cache_raw else None
             if self.cfg['CHAPTERS_THEME_CACHE_DIR'] and not self.cfg['CHAPTERS_THEME_CACHE_DIR'].exists():
                 logging.warning("Directorio caché de temas no existe: %s (se creará al primer uso)", self.cfg['CHAPTERS_THEME_CACHE_DIR'])
+            self.cfg['MAX_THEME_CACHE_MB'] = self.config.getint('CHAPTERS', 'max_theme_cache_mb', fallback=1024)
+            self.cfg['THEME_CACHE_TTL_DAYS'] = self.config.getint('CHAPTERS', 'theme_cache_ttl_days', fallback=120)
             self.cfg['CORRELATION_TIMEOUT'] = self.config.getint('CHAPTERS', 'correlation_timeout', fallback=120)
             self.cfg['SCORE_THRESHOLD'] = self.config.getint('CHAPTERS', 'score_threshold', fallback=2000)
             self.cfg['SNAP_TOLERANCE'] = self.config.getfloat('CHAPTERS', 'snap_tolerance', fallback=4.0)

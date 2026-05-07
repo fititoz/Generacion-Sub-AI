@@ -14,6 +14,8 @@ import re
 import json
 import os
 import time
+import shutil
+from datetime import datetime, timedelta
 from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Optional, List, Tuple, Dict, Any
@@ -373,6 +375,70 @@ def get_theme_files(
                 tmp_metadata.unlink(missing_ok=True)
 
     return result
+
+
+def prune_theme_cache(cache_dir: Path, max_mb: int, ttl_days: int) -> None:
+    """
+    Elimina entradas antiguas de la caché de temas basadas en tiempo (TTL) 
+    y tamaño máximo (MB).
+    """
+    if not cache_dir or not cache_dir.exists():
+        return
+
+    logging.info(f"[Chapters] Iniciando limpieza de caché de temas (Límite: {max_mb} MB, TTL: {ttl_days} días)...")
+    
+    try:
+        now = datetime.now()
+        ttl_threshold = now - timedelta(days=ttl_days)
+        
+        # Fase 1: Limpieza por TTL (antigüedad)
+        pruned_count = 0
+        for series_dir in [d for d in cache_dir.iterdir() if d.is_dir()]:
+            # Usar mtime de la carpeta o del archivo de metadatos
+            metadata_file = series_dir / THEME_CACHE_METADATA_FILE
+            mtime = datetime.fromtimestamp(metadata_file.stat().st_mtime if metadata_file.exists() else series_dir.stat().st_mtime)
+            
+            if mtime < ttl_threshold:
+                logging.info(f"[Chapters] Eliminando caché expirada (> {ttl_days} días): {series_dir.name}")
+                shutil.rmtree(series_dir, ignore_errors=True)
+                pruned_count += 1
+        
+        if pruned_count > 0:
+            logging.info(f"[Chapters] Fase 1 finalizada: {pruned_count} carpetas eliminadas por TTL.")
+
+        # Fase 2: Limpieza por Tamaño Máximo
+        def get_dir_size(path: Path) -> int:
+            return sum(f.stat().st_size for f in path.glob('**/*') if f.is_file())
+
+        total_size_bytes = sum(f.stat().st_size for f in cache_dir.glob('**/*') if f.is_file())
+        max_bytes = max_mb * 1024 * 1024
+        
+        if total_size_bytes > max_bytes:
+            logging.info(f"[Chapters] Caché excede tamaño máximo ({total_size_bytes / (1024*1024):.1f} MB > {max_mb} MB). Purgando los más antiguos...")
+            
+            # Obtener todas las carpetas con sus mtimes
+            dirs = []
+            for d in [d for d in cache_dir.iterdir() if d.is_dir()]:
+                m_file = d / THEME_CACHE_METADATA_FILE
+                mtime = m_file.stat().st_mtime if m_file.exists() else d.stat().st_mtime
+                dirs.append({'path': d, 'mtime': mtime, 'size': get_dir_size(d)})
+            
+            # Ordenar por mtime (más viejo primero)
+            dirs.sort(key=lambda x: x['mtime'])
+            
+            for d_info in dirs:
+                if total_size_bytes <= max_bytes:
+                    break
+                logging.info(f"[Chapters] Eliminando para liberar espacio: {d_info['path'].name} ({d_info['size'] / (1024*1024):.1f} MB)")
+                shutil.rmtree(d_info['path'], ignore_errors=True)
+                total_size_bytes -= d_info['size']
+            
+            logging.info(f"[Chapters] Fase 2 finalizada. Tamaño actual: {total_size_bytes / (1024*1024):.1f} MB.")
+        else:
+            logging.info(f"[Chapters] Tamaño de caché OK ({total_size_bytes / (1024*1024):.1f} MB).")
+
+    except Exception as e:
+        logging.warning(f"[Chapters] Error durante la limpieza de caché: {e}")
 
 
 def _sanitize_dirname(name: str) -> str:

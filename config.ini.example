@@ -114,6 +114,10 @@ enabled = yes
 # Carpeta persistente para cachear temas descargados de animethemes.moe
 # Dejar vacío para desactivar caché (descarga cada vez)
 theme_cache_dir = /config/scripts/OPED
+# Tamaño máximo de la caché de temas en MB (se borrarán los más antiguos si se supera)
+max_theme_cache_mb = 1024
+# Días máximos de vida de un archivo en la caché (TTL)
+theme_cache_ttl_days = 120
 # Timeout en segundos para el cálculo de correlación
 correlation_timeout = 120
 # Umbral mínimo de score de correlación (peak / downsample_factor)

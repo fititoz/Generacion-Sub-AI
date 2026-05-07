@@ -3,6 +3,11 @@
 All notable changes to this project will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [2026.05.2] - 2026-05-06
+
+### Added
+- Smart theme cache pruning (TTL and size-based) to manage `animethemes` audio storage.
+
 ## [2026.05.1] - 2026-05-06
 
 ### Added
