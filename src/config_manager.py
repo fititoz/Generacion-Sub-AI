@@ -40,6 +40,7 @@ class ConfigManager:
                 'spain_keywords': 'españa, spain, castellano, castilian, español europeo, iberian'
             },
             'SETTINGS': {
+                'auto_update': 'yes',
                 'output_action': 'remux',
                 'add_subs_to_mkv': 'yes',
                 'set_new_sub_default': 'no',
@@ -100,10 +101,12 @@ class ConfigManager:
             spain_kw_str = self.config.get('TRANSLATION', 'spain_keywords')
             self.cfg['LATINO_KEYWORDS'] = {kw.strip().lower() for kw in latino_kw_str.split(',') if kw.strip()}
             self.cfg['SPAIN_KEYWORDS'] = {kw.strip().lower() for kw in spain_kw_str.split(',') if kw.strip()}
+            self.cfg['AUTO_UPDATE'] = self.config.getboolean('SETTINGS', 'auto_update', fallback=True)
             self.cfg['OUTPUT_ACTION'] = self.config.get('SETTINGS', 'output_action').strip().lower()
             if self.cfg['OUTPUT_ACTION'] not in ['remux', 'save_separate_sub']:
                 logging.warning(f"output_action inválido '{self.cfg['OUTPUT_ACTION']}'. Usando 'remux'.");
-                self.cfg['OUTPUT_ACTION'] = 'remux'
+                self.cfg['AUTO_UPDATE'] = self.config.getboolean('SETTINGS', 'auto_update', fallback=True)
+            self.cfg['OUTPUT_ACTION'] = 'remux'
             logging.info(f"Acción de salida: {self.cfg['OUTPUT_ACTION']}")
             self.cfg['ADD_SUBS_TO_MKV'] = self.config.getboolean('SETTINGS', 'add_subs_to_mkv')
             self.cfg['SET_NEW_SUB_DEFAULT'] = self.config.getboolean('SETTINGS', 'set_new_sub_default')

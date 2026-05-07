@@ -3,6 +3,11 @@
 All notable changes to this project will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [2026.05.3] - 2026-05-06
+
+### Added
+- Python Auto-Updater: Automatic self-updating from GitHub releases.
+
 ## [2026.05.2] - 2026-05-06
 
 ### Added

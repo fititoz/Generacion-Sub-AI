@@ -915,8 +915,19 @@ def main():
     logging.debug(f"Directorio de trabajo actual (CWD): {Path.cwd()}")
     logging.debug(f"Ruta config.ini: {config_path}")
     
+
     config_manager = ConfigManager(config_path)
     config = config_manager.get_all()
+
+    # --- Auto-Updater ---
+    if config.get('AUTO_UPDATE', True):
+        try:
+            import src.updater as updater
+            updater.clean_old_files(script_dir)
+            updater.check_and_update(script_version, script_dir)
+        except Exception as e:
+            logging.warning(f"Error en auto-updater: {e}")
+
 
     tool_paths = check_mkvtoolnix_tools(config)
     if config['OUTPUT_ACTION'] == 'remux' and (not tool_paths or not tool_paths.get('mkvmerge') or not tool_paths.get('mkvextract')): sys.exit("MKVToolNix necesario para 'remux' no encontrado.")

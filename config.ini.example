@@ -51,6 +51,8 @@ rate_limit_wait_seconds = 60
 rate_limit_max_global_retries = 3
 
 [SETTINGS]
+# Habilitar actualización automática desde GitHub (yes/no)
+auto_update = yes
 # ¿Intentar añadir el subtítulo traducido al MKV? (yes/no)
 add_subs_to_mkv = yes
 # ¿Marcar la nueva pista de subtítulos como 'default'? (yes/no)
