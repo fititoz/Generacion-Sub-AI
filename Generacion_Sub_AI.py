@@ -289,13 +289,14 @@ def _detect_mode() -> str:
         return 'sonarr'
     return 'standalone'
 
-def _extract_context(mode: str) -> dict:
+def _extract_contexts(mode: str) -> list[dict]:
     """
     Extract mkv_path, series_title, episode_title, season_number based on mode.
-    Returns dict with keys: mkv_path (Path), series_title (str), episode_title (str),
+    Returns list of dicts with keys: mkv_path (Path), series_title (str), episode_title (str),
     season_number (int|None), chapters_override (bool|None).
     Raises SystemExit on invalid input.
     """
+    contexts = []
     if mode == 'radarr':
         # --- Radarr Mode ---
         for key, value in os.environ.items():
@@ -312,13 +313,13 @@ def _extract_context(mode: str) -> dict:
             raise SystemExit("Radarr: Variable 'radarr_moviefile_path' no encontrada.")
 
         movie_title = os.environ.get('radarr_movie_title', 'Desconocido')
-        return {
+        contexts.append({
             'mkv_path': Path(mkv_path_str),
             'series_title': movie_title,
             'episode_title': movie_title,
             'season_number': None,
             'chapters_override': False,  # Radarr = NEVER chapters
-        }
+        })
 
     elif mode == 'sonarr':
         # --- Sonarr Mode ---
@@ -331,60 +332,59 @@ def _extract_context(mode: str) -> dict:
             logging.info("Evento Sonarr 'Test' recibido. Saliendo OK.")
             sys.exit(0)
 
-        mkv_path_str = None
+        mkv_paths_raw = None
         env_source = None
 
         if 'sonarr_episodefile_path' in os.environ:
-            mkv_path_str = os.environ.get('sonarr_episodefile_path')
+            mkv_paths_raw = os.environ.get('sonarr_episodefile_path')
             env_source = 'sonarr_episodefile_path'
         elif 'sonarr_episodefile_paths' in os.environ:
-            mkv_path_str = os.environ.get('sonarr_episodefile_paths')
+            mkv_paths_raw = os.environ.get('sonarr_episodefile_paths')
             env_source = 'sonarr_episodefile_paths'
         elif 'sonarr_filepath' in os.environ:
-            mkv_path_str = os.environ.get('sonarr_filepath')
+            mkv_paths_raw = os.environ.get('sonarr_filepath')
             env_source = 'sonarr_filepath'
 
-        if mkv_path_str and '|' in mkv_path_str:
-            mkv_path_str = mkv_path_str.split('|')[0]
-            logging.warning("Múltiples rutas, usando primera: '%s'", mkv_path_str)
-
-        if not mkv_path_str:
+        if not mkv_paths_raw:
             raise SystemExit("Sonarr: Variable con ruta de archivo no encontrada.")
 
-        logging.info("Ruta recibida (vía %s): %s", env_source, mkv_path_str)
+        mkv_path_list = [p.strip() for p in mkv_paths_raw.split('|') if p.strip()]
+        logging.info("Rutas recibidas (vía %s): %s", env_source, mkv_path_list)
 
         series_title = os.environ.get('sonarr_series_title', 'Desconocido')
-        episode_title = os.environ.get('sonarr_episodefile_episodetitles', '')
-        if not episode_title:
-            _ep_nums = os.environ.get('sonarr_episodefile_episodenumbers', '')
-            if _ep_nums:
-                episode_title = f"Episodio {_ep_nums}"
-            else:
-                # Fallback: extraer del nombre de archivo (S01E05 -> "Episodio 5")
-                _ep_match = re.search(r'[Ss]\d+[Ee](\d+)', mkv_path_str)
-                episode_title = f"Episodio {int(_ep_match.group(1))}" if _ep_match else 'Desconocido'
+        
+        for path_str in mkv_path_list:
+            episode_title = os.environ.get('sonarr_episodefile_episodetitles', '')
+            if not episode_title:
+                _ep_nums = os.environ.get('sonarr_episodefile_episodenumbers', '')
+                if _ep_nums:
+                    episode_title = f"Episodio {_ep_nums}"
+                else:
+                    # Fallback: extraer del nombre de archivo (S01E05 -> "Episodio 5")
+                    _ep_match = re.search(r'[Ss]\d+[Ee](\d+)', path_str)
+                    episode_title = f"Episodio {int(_ep_match.group(1))}" if _ep_match else 'Desconocido'
 
-        season_number = None
-        _raw_season = os.environ.get('sonarr_episodefile_seasonnumber')
-        if _raw_season:
-            try:
-                season_number = int(_raw_season)
-            except (ValueError, TypeError):
-                logging.debug("sonarr_episodefile_seasonnumber no es entero: '%s'", _raw_season)
+            season_number = None
+            _raw_season = os.environ.get('sonarr_episodefile_seasonnumber')
+            if _raw_season:
+                try:
+                    season_number = int(_raw_season)
+                except (ValueError, TypeError):
+                    logging.debug("sonarr_episodefile_seasonnumber no es entero: '%s'", _raw_season)
 
-        if season_number is None:
-            _season_match = re.search(r'[Ss](\d+)[Ee]', mkv_path_str)
-            if _season_match:
-                season_number = int(_season_match.group(1))
-                logging.debug("Temporada extraída del path: %d", season_number)
+            if season_number is None:
+                _season_match = re.search(r'[Ss](\d+)[Ee]', path_str)
+                if _season_match:
+                    season_number = int(_season_match.group(1))
+                    logging.debug("Temporada extraída del path: %d", season_number)
 
-        return {
-            'mkv_path': Path(mkv_path_str),
-            'series_title': series_title,
-            'episode_title': episode_title,
-            'season_number': season_number,
-            'chapters_override': None,  # Sonarr: use config
-        }
+            contexts.append({
+                'mkv_path': Path(path_str),
+                'series_title': series_title,
+                'episode_title': episode_title,
+                'season_number': season_number,
+                'chapters_override': None,  # Sonarr: use config
+            })
 
     else:
         # --- Standalone Mode ---
@@ -426,87 +426,57 @@ def _extract_context(mode: str) -> dict:
             if _season_match:
                 season_number = int(_season_match.group(1))
 
-        return {
+        contexts.append({
             'mkv_path': Path(mkv_path_str),
             'series_title': series_title,
             'episode_title': 'Desconocido',
             'season_number': season_number,
             'chapters_override': None,  # Standalone: use config
-        }
-
-def main():
-    setup_logging()
-    from src.__version__ import __version__ as script_version
+        })
     
-    # Determinar rutas absolutas para compatibilidad con Sonarr
-    script_dir = Path(__file__).parent.resolve()
-    config_path = script_dir / "config.ini"
+    return contexts
+
+
+def process_file(ctx: dict, config: dict, tool_paths: dict, translation_cache: TranslationCache):
+    """Procesa un único archivo MKV basado en el contexto proporcionado."""
+    mkv_path = ctx['mkv_path']
+    series_title = ctx['series_title']
+    episode_title = ctx['episode_title']
+    season_number = ctx['season_number']
     
-    logging.info(f"--- Traductor MKV para Sonarr/Radarr ({script_version}) ---")
-    logging.debug(f"Directorio del script: {script_dir}")
-    logging.debug(f"Directorio de trabajo actual (CWD): {Path.cwd()}")
-    logging.debug(f"Ruta config.ini: {config_path}")
-    
-    config_manager = ConfigManager(config_path)
-    config = config_manager.get_all()
-
-    tool_paths = check_mkvtoolnix_tools(config)
-    if config['OUTPUT_ACTION'] == 'remux' and (not tool_paths or not tool_paths.get('mkvmerge') or not tool_paths.get('mkvextract')): sys.exit("MKVToolNix necesario para 'remux' no encontrado.")
-    elif not tool_paths or not tool_paths.get('mkvextract'): sys.exit("mkvextract necesario no encontrado.")
-    if config['GEMINI_API_KEY'] == "TU_API_KEY_AQUI": sys.exit("Clave API Gemini no configurada.")
-
-    translation_cache = TranslationCache(config.get('ENABLE_TRANSLATION_CACHE', True))
-
-    def _sigterm_handler(signum, frame):
-        logging.warning("SIGTERM recibido. Guardando caché antes de salir...")
-        if 'translation_cache' in locals() and config.get('ENABLE_TRANSLATION_CACHE'):
-            translation_cache.save_cache()
-        sys.exit(0)
-    signal.signal(signal.SIGTERM, _sigterm_handler)
-
-    mkv_path = None
     saved_subtitle_temp_path = None
     final_action_successful = False
     output_sub_ext = '.srt'
 
+    # Radarr override: deshabilitar capítulos
+    original_chapters_enabled = config.get('CHAPTERS_ENABLED')
+    if ctx['chapters_override'] is False:
+        config['CHAPTERS_ENABLED'] = False
+        logging.info("[Radarr] Capítulos deshabilitados para películas.")
+
     try:
-        # --- PASO 1: Detectar modo y obtener contexto ---
-        mode = _detect_mode()
-        logging.info("Modo detectado: %s", mode.upper())
-        ctx = _extract_context(mode)
-
-        mkv_path = ctx['mkv_path']
-        series_title = ctx['series_title']
-        episode_title = ctx['episode_title']
-        season_number = ctx['season_number']
-
-        # Radarr override: deshabilitar capítulos
-        if ctx['chapters_override'] is False:
-            config['CHAPTERS_ENABLED'] = False
-            logging.info("[Radarr] Capítulos deshabilitados para películas.")
-
         # Validar archivo MKV
         if not mkv_path.is_file():
             logging.error("ERROR: Ruta no existe o no es archivo: %s", mkv_path)
-            raise SystemExit(f"Ruta inválida: {mkv_path}")
+            return
         if mkv_path.suffix.lower() != '.mkv':
             logging.error("ERROR: Archivo no es .mkv: %s", mkv_path.name)
-            raise SystemExit(f"Archivo no es MKV: {mkv_path.name}")
+            return
         try:
             with open(mkv_path, 'rb') as f:
                 f.read(1)
             logging.info("Archivo MKV OK: %s", mkv_path.name)
         except Exception as e:
             logging.error("Error lectura MKV (Permisos? Corrupto?): %s", e, exc_info=True)
-            raise SystemExit("Error lectura archivo.")
+            return
         logging.debug("Validaciones de ruta y archivo OK.")
 
         # Inyectar contexto en config
         config['SEASON_NUMBER'] = season_number
         config['SERIES_TITLE'] = series_title
         config['EPISODE_TITLE'] = episode_title
-        logging.info("Contexto %s: Serie='%s', Temporada=%s, Episodio='%s'",
-                     mode.capitalize(), series_title, season_number, episode_title)
+        logging.info("Procesando: Serie='%s', Temporada=%s, Episodio='%s'",
+                     series_title, season_number, episode_title)
 
         # --- PASO 2: Obtener info detallada ---
         track_codecs = {}
@@ -543,7 +513,7 @@ def main():
                 except Exception as e_assign:
                     logging.warning(f"No se pudo asignar mkvmerge_path a pymkv: {e_assign}")
             logging.info("Análisis pymkv OK.")
-        except Exception as e: logging.exception("Error fatal análisis pymkv:"); raise SystemExit("Fallo análisis MKV.")
+        except Exception as e: logging.exception("Error fatal análisis pymkv:"); return
 
         # --- PASO 4: Comprobar pista objetivo ---
         subs_tracks = []
@@ -616,7 +586,7 @@ def main():
                         if chapter_file and chapter_file.exists() and mkv_info:
                             logging.info("[Chapters] Reorder falló, intentando embedding de capítulos standalone...")
                             _embed_chapters_standalone(mkv_path, chapter_file, config, tool_paths)
-                sys.exit(0)
+                return
             else:
                 # Pista existe pero reorder desactivado — aún intentar capítulos
                 if config.get('CHAPTERS_ENABLED') and config.get('OUTPUT_ACTION') == 'remux':
@@ -627,9 +597,12 @@ def main():
                         )
                         if chapter_file and chapter_file.exists():
                             _embed_chapters_standalone(mkv_path, chapter_file, config, tool_paths)
-                raise SystemExit("Pista objetivo ya existe y reordenamiento desactivado.")
+                logging.info("Pista objetivo ya existe y reordenamiento desactivado.")
+                return
         
-        if not subs_tracks: raise SystemExit("No hay subtítulos.")
+        if not subs_tracks:
+            logging.warning("No hay subtítulos en %s", mkv_path.name)
+            return
 
         # --- PASO 5: Seleccionar pista fuente ---
         codecs_to_use = track_codecs if track_codecs else {
@@ -637,13 +610,15 @@ def main():
         }
         src_track = select_subtitle_track(subs_tracks, codecs_to_use, config)
         if not src_track:
-            raise SystemExit("No hay pista fuente válida.")
+            logging.warning("No hay pista fuente válida en %s", mkv_path.name)
+            return
         src_track_id = getattr(src_track, 'track_id', 'N/A')
         source_codec_id = codecs_to_use.get(src_track_id, '?')
         if source_codec_id == '?':
             source_codec_id = getattr(src_track, 'codec_id', '?')
         if source_codec_id != '?' and ('vobsub' in source_codec_id.lower() or 'pgs' in source_codec_id.lower()):
-            raise SystemExit("Pista fuente es imagen.")
+            logging.warning("Pista fuente es imagen en %s", mkv_path.name)
+            return
 
         # --- PASO 6: Configurar Gemini ---
         try:
@@ -651,7 +626,7 @@ def main():
             logging.info("Conexión Gemini OK.")
         except Exception as e: 
             logging.exception("Error config/conexión Gemini:")
-            raise SystemExit(f"Fallo conexión Gemini: {e}")
+            return
 
         # --- PASO 7: Confirmación ---
         lang_n = getattr(src_track, 'language', 'und')
@@ -731,7 +706,9 @@ def main():
                     lines_to_translate_original.append(line.text)
                     original_subs_indices.append(i)
             num_proc = len(lines_to_translate_original)
-            if num_proc == 0: raise SystemExit("Subtítulo sin texto traducible.")
+            if num_proc == 0:
+                logging.warning("Subtítulo sin texto traducible en %s", mkv_path.name)
+                return
             logging.info("--- Traducción (%d líneas válidas, con fallback recursivo) ---", num_proc)
             logging.info("Modelo inicial: '%s'. Delay API: %.1fs.", gemini_client.current_model_name, config['API_CALL_DELAY'])
             t_start = time.time()
@@ -915,8 +892,61 @@ def main():
                         final_action_successful = False # Marcar fallo si movimiento falla
             logging.debug("Directorio temporal será limpiado automáticamente.")
             # --- FIN Limpieza Final ---
-    except SystemExit as e: exit_msg = str(e) if str(e) not in ['None', '0'] else "Salida controlada."; logging.warning(f"Ejecución abortada: {exit_msg}")
-    except Exception as e: logging.exception("Error fatal no recuperado:")
+    except SystemExit as e:
+        exit_msg = str(e) if str(e) not in ['None', '0'] else "Salida controlada."
+        logging.warning(f"Ejecución abortada para {mkv_path.name}: {exit_msg}")
+    except Exception as e:
+        logging.exception(f"Error fatal no recuperado en {mkv_path.name}:")
+    finally:
+        # Restaurar configuración original
+        config['CHAPTERS_ENABLED'] = original_chapters_enabled
+
+def main():
+
+    setup_logging()
+    from src.__version__ import __version__ as script_version
+    
+    # Determinar rutas absolutas para compatibilidad con Sonarr
+    script_dir = Path(__file__).parent.resolve()
+    config_path = script_dir / "config.ini"
+    
+    logging.info(f"--- Traductor MKV para Sonarr/Radarr ({script_version}) ---")
+    logging.debug(f"Directorio del script: {script_dir}")
+    logging.debug(f"Directorio de trabajo actual (CWD): {Path.cwd()}")
+    logging.debug(f"Ruta config.ini: {config_path}")
+    
+    config_manager = ConfigManager(config_path)
+    config = config_manager.get_all()
+
+    tool_paths = check_mkvtoolnix_tools(config)
+    if config['OUTPUT_ACTION'] == 'remux' and (not tool_paths or not tool_paths.get('mkvmerge') or not tool_paths.get('mkvextract')): sys.exit("MKVToolNix necesario para 'remux' no encontrado.")
+    elif not tool_paths or not tool_paths.get('mkvextract'): sys.exit("mkvextract necesario no encontrado.")
+    if config['GEMINI_API_KEY'] == "TU_API_KEY_AQUI": sys.exit("Clave API Gemini no configurada.")
+
+    translation_cache = TranslationCache(config.get('ENABLE_TRANSLATION_CACHE', True))
+
+    def _sigterm_handler(signum, frame):
+        logging.warning("SIGTERM recibido. Guardando caché antes de salir...")
+        if 'translation_cache' in locals() and config.get('ENABLE_TRANSLATION_CACHE'):
+            translation_cache.save_cache()
+        sys.exit(0)
+    signal.signal(signal.SIGTERM, _sigterm_handler)
+
+    try:
+        # --- PASO 1: Detectar modo y obtener contextos ---
+        mode = _detect_mode()
+        logging.info("Modo detectado: %s", mode.upper())
+        contexts = _extract_contexts(mode)
+
+        for ctx_idx, ctx in enumerate(contexts):
+            logging.info(f"--- Procesando archivo {ctx_idx + 1}/{len(contexts)} ---")
+            process_file(ctx, config, tool_paths, translation_cache)
+
+    except SystemExit as e:
+        exit_msg = str(e) if str(e) not in ['None', '0'] else "Salida controlada."
+        logging.warning(f"Ejecución abortada: {exit_msg}")
+    except Exception as e:
+        logging.exception("Error fatal no recuperado:")
     finally:
         if 'translation_cache' in locals() and config.get('ENABLE_TRANSLATION_CACHE'): translation_cache.save_cache()
         else: logging.debug("No se guardó caché.")

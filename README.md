@@ -15,6 +15,7 @@ automatic anime OP/ED chapter detection via audio correlation with animethemes.m
 - **Smart track reordering**: Prioritizes Latin American Spanish > European Spanish > Other languages
 - **Translation cache**: JSON-based cache avoids re-translating identical lines
 - **Parallel processing**: Chapter generation runs concurrently with subtitle translation
+- **Batch Processing**: Fully supports Sonarr mass rename/grab events containing multiple files.
 
 ## Requirements
 
@@ -72,7 +73,7 @@ with no interactive prompts in Sonarr/Radarr mode.
 ```
 Generacion_Sub_AI.py     — Entry point, mode detection, orchestration
 src/
-├── __version__.py       — CalVer version (2026.03)
+├── __version__.py       — CalVer version (2026.06)
 ├── config_manager.py    — config.ini parser
 ├── gemini_client.py     — Gemini API client + retry logic
 ├── model_manager.py     — Model rotation + rate limit tracking

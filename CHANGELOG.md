@@ -3,6 +3,11 @@
 All notable changes to this project will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [2026.06] - 2026-05-06
+
+### Added
+- Batch Processing support for Sonarr mass operations (processes multiple pipe-separated files in a single run).
+
 ## [2026.05] - 2026-05-06
 
 ### Added
