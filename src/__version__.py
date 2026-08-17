@@ -1,4 +1,4 @@
 """Version information for Generacion_Sub_AI."""
 
-__version__ = "2026.05.3"
-__version_info__ = (2026, 5, 3)
+__version__ = "2026.08.1"
+__version_info__ = (2026, 8, 1)

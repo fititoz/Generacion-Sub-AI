@@ -3,12 +3,30 @@
 All notable changes to this project will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [2026.08.1] - 2026-08-17
+
+### Added
+- OpenAI-compatible API client (`src/openai_client.py`) supporting any provider with `base_url` + `api_key` (OpenRouter, Together, Groq, Ollama, etc.)
+- New configuration options in `config.ini`: `api_key`, `base_url`, `model`
+
+### Changed
+- **BREAKING**: Replaced Google Gemini API with OpenAI-compatible API
+- `requirements.txt`: `google-genai` → `openai`
+- `config.ini`: Removed `gemini_api_key` and `preferred_models`; added `api_key`, `base_url`, `model`
+- `translated_track_name` default changed from "Español Latino (Gemini AI)" to "Español Latino (AI)"
+- `src/config_manager.py`: Parses new API configuration fields
+- `Generacion_Sub_AI.py`: Updated imports and references to use `OpenAIClient`
+- `src/translation_validator.py`: `TranslationCorrector` now uses `api_client`
+- Cache file renamed from `gemini_translation_cache.json` to `translation_cache.json`
+- Version bumped to CalVer 2026.08.1
+
+### Removed
+- `src/gemini_client.py`: Replaced by `src/openai_client.py`
+
 ## [2026.05.3] - 2026-05-06
 
 ### Added
-- Python Auto-Updater: Automatic self-updating from GitHub releases.
-
-## [2026.05.2] - 2026-05-06
+- Python Auto-Updater: Automatic self-updating from GitHub releases.## [2026.05.2] - 2026-05-06
 
 ### Added
 - Smart theme cache pruning (TTL and size-based) to manage `animethemes` audio storage.
@@ -56,3 +74,4 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 ### Previous versions
 - v21 (2025): Multi-mode input (Sonarr/Radarr/Standalone), anime chapter generation,
   title lookup, TTL cache, result validation. See `.sisyphus/plans/` in v21 folder for details.
+

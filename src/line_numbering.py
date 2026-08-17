@@ -1,7 +1,7 @@
 """
 line_numbering.py — Numbered line formatting for batch API communication.
 
-Wraps subtitle lines in [N]: prefix format for Gemini API consumption,
+Wraps subtitle lines in [N]: prefix format for API consumption,
 parses numbered responses back into a dictionary, and validates that
 all expected line indices are present in the response.
 """

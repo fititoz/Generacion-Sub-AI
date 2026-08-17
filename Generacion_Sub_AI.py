@@ -4,7 +4,7 @@
 Generacion_Sub_AI — MKV subtitle translator with anime chapter generation.
 
 Entry point for Sonarr, Radarr, and standalone execution modes.
-Coordinates subtitle extraction, Gemini AI translation, post-translation
+Coordinates subtitle extraction, API translation, post-translation
 validation, MKV remuxing, track reordering, and chapter embedding.
 
 Execution flow:
@@ -68,7 +68,7 @@ try:
         TKINTER_AVAILABLE = False
 except ImportError as e: print(f"ERROR FATAL importando ({e}).", file=sys.stderr); sys.exit(1)
 
-from src.gemini_client import GeminiClient
+from src.openai_client import OpenAIClient
 
 # --- Configuración de Logging ---
 from src.logging_setup import setup_logging
@@ -201,7 +201,7 @@ def get_subtitle_extension(codec_id):
 from src.tag_handler import extract_tags, restore_tags
 
 # --- Funciones de Traducción ---
-# (Las funciones de traducción ahora se gestionan a través de la clase GeminiClient en src/gemini_client.py)
+# (Las funciones de traducción ahora se gestionan a través de la clase OpenAIClient en src/openai_client.py)
 
 
 
@@ -395,7 +395,7 @@ def _extract_contexts(mode: str) -> list[dict]:
         parser.add_argument('--file', '-f', type=str, default=None,
                             help='Ruta al archivo MKV')
         parser.add_argument('--series', '-s', type=str, default=None,
-                            help='Nombre de la serie (para prompt Gemini y búsqueda de temas)')
+                            help='Nombre de la serie (para prompt y búsqueda de temas)')
         parser.add_argument('--season', '-n', type=int, default=None,
                             help='Número de temporada (para selección de OP/ED)')
         args = parser.parse_args()
@@ -620,12 +620,17 @@ def process_file(ctx: dict, config: dict, tool_paths: dict, translation_cache: T
             logging.warning("Pista fuente es imagen en %s", mkv_path.name)
             return
 
-        # --- PASO 6: Configurar Gemini ---
+        # --- PASO 6: Configurar API ---
         try:
-            gemini_client = GeminiClient(config['GEMINI_API_KEY'], config)
-            logging.info("Conexión Gemini OK.")
-        except Exception as e: 
-            logging.exception("Error config/conexión Gemini:")
+            api_client = OpenAIClient(
+                api_key=config['API_KEY'],
+                base_url=config['BASE_URL'],
+                model=config['MODEL'],
+                config=config
+            )
+            logging.info("Conexión API OK.")
+        except Exception as e:
+            logging.exception("Error config/conexión API:")
             return
 
         # --- PASO 7: Confirmación ---
@@ -633,7 +638,7 @@ def process_file(ctx: dict, config: dict, tool_paths: dict, translation_cache: T
         codec_n = source_codec_id or '?'
         logging.info("--- Iniciando Proceso ---")
         logging.info("Fuente: ID %s (Lang '%s', Codec '%s')", src_track_id, lang_n, codec_n)
-        logging.info("Traduciendo a: %s usando '%s'", config['TARGET_LANGUAGE_NAME'], gemini_client.current_model_name)
+        logging.info("Traduciendo a: %s usando '%s'", config['TARGET_LANGUAGE_NAME'], api_client.current_model_name)
         logging.info(f"Acción final: {config['OUTPUT_ACTION']}")
 
         # --- PASO 8-12: Procesamiento principal ---
@@ -710,12 +715,12 @@ def process_file(ctx: dict, config: dict, tool_paths: dict, translation_cache: T
                 logging.warning("Subtítulo sin texto traducible en %s", mkv_path.name)
                 return
             logging.info("--- Traducción (%d líneas válidas, con fallback recursivo) ---", num_proc)
-            logging.info("Modelo inicial: '%s'. Delay API: %.1fs.", gemini_client.current_model_name, config['API_CALL_DELAY'])
+            logging.info("Modelo inicial: '%s'. Delay API: %.1fs.", api_client.current_model_name, config['API_CALL_DELAY'])
             t_start = time.time()
             
             stats = {'ok':0, 'errors': 0, 'processed': num_proc}
             try:
-                all_translated_results = gemini_client.translate_recursive_fallback(lines_to_translate_original, translation_cache)
+                all_translated_results = api_client.translate_recursive_fallback(lines_to_translate_original, translation_cache)
             except Exception as e:
                 logging.error(f"Fallo crítico en traducción recursiva: {e}")
                 all_translated_results = ["[[ERROR_FATAL_TRADUCTOR]]"] * num_proc
@@ -731,7 +736,7 @@ def process_file(ctx: dict, config: dict, tool_paths: dict, translation_cache: T
             
             issues_found = [r for r in validation_results if r.issues]
             if issues_found:
-                corrector = TranslationCorrector(gemini_client, translation_cache)
+                corrector = TranslationCorrector(api_client, translation_cache)
                 all_translated_results = corrector.attempt_corrections(issues_found, all_translated_results)
             else:
                 logging.info("Análisis completado: ¡No se detectaron problemas!")
@@ -932,7 +937,7 @@ def main():
     tool_paths = check_mkvtoolnix_tools(config)
     if config['OUTPUT_ACTION'] == 'remux' and (not tool_paths or not tool_paths.get('mkvmerge') or not tool_paths.get('mkvextract')): sys.exit("MKVToolNix necesario para 'remux' no encontrado.")
     elif not tool_paths or not tool_paths.get('mkvextract'): sys.exit("mkvextract necesario no encontrado.")
-    if config['GEMINI_API_KEY'] == "TU_API_KEY_AQUI": sys.exit("Clave API Gemini no configurada.")
+    if config['API_KEY'] == "TU_API_KEY_AQUI": sys.exit("Clave API no configurada.")
 
     translation_cache = TranslationCache(config.get('ENABLE_TRANSLATION_CACHE', True))
 

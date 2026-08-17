@@ -29,14 +29,14 @@ TAG_REGEX = re.compile(
 LINEBREAK_REGEX = re.compile(r'\\[Nnh]')
 
 CACHE_DIR_NAME = "cache"
-CACHE_FILE_NAME = "gemini_translation_cache.json"
+CACHE_FILE_NAME = "translation_cache.json"
 LOG_FILENAME = 'translate_mkv_subs.log'
 PLACEHOLDER_PREFIX = "__TAG"
 PLACEHOLDER_SUFFIX = "__"
 BATCH_FAILURE_INDICATOR = "[[BATCH_TRANSLATION_FAILED_IRRECOVERABLY]]"
 
 REQUIRED_PACKAGES = {
-    "google-genai": "google-genai",
+    "openai": "openai",
     "pysubs2": "pysubs2",
     "pymkv": "pymkv",
 }

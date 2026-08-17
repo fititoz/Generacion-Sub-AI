@@ -70,8 +70,8 @@ class TranslationValidator:
         return results
 
 class TranslationCorrector:
-    def __init__(self, gemini_client, cache_manager):
-        self.gemini_client = gemini_client
+    def __init__(self, api_client, cache_manager):
+        self.api_client = api_client
         self.cache = cache_manager
 
     def attempt_corrections(self, validation_results: list[ValidationResult], all_translations: list[str]) -> list[str]:
@@ -90,7 +90,7 @@ class TranslationCorrector:
             
             if critical_issue:
                 logging.info(f"Re-traduciendo línea {res.line_index + 1} individualmente por error crítico...")
-                better_trans = self.gemini_client.translate_single_gemini(res.original, self.cache)
+                better_trans = self.api_client.translate_single(res.original, self.cache)
                 all_translations[res.line_index] = better_trans
             else:
                 logging.debug(f"Línea {res.line_index + 1} marcada con avisos: {', '.join(res.issues)}. No se requiere acción crítica.")

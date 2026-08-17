@@ -9,7 +9,7 @@ class SubtitleTranslationError(Exception):
     pass
 
 class APIConnectionError(SubtitleTranslationError):
-    """Error connecting to Gemini API."""
+    """Error connecting to API."""
     pass
 
 class APIResponseError(SubtitleTranslationError):

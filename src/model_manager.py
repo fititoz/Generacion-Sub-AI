@@ -1,5 +1,5 @@
 """
-model_manager.py — Gemini model rotation and rate limit management.
+model_manager.py — Model rotation and rate limit management (legacy, not used with OpenAI client).
 
 Maintains an ordered list of preferred models, tracks rate-limited models,
 persists blocked state to disk for cross-invocation awareness, and provides

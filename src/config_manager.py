@@ -21,13 +21,13 @@ class ConfigManager:
         default_batch_prompt = """(Prompt batch con __TAGn__)"""
         default_single_prompt = """(Prompt single con __TAGn__)"""
         defaults = {
-            'API': {'gemini_api_key': 'TU_API_KEY_AQUI'},
+            'API': {'api_key': 'TU_API_KEY_AQUI', 'base_url': 'https://openrouter.ai/api/v1'},
             'PATHS': {'mkvtoolnix_dir': ''},
             'TRANSLATION': {
                 'target_language_name': 'Español Latino (sin censura)',
                 'target_language_codes': 'es-419, spa, es, lat',
                 'preferred_source_lang': 'eng',
-                'preferred_models': '\n'.join(['gemini-1.5-pro-latest', 'gemini-1.5-flash-latest']),
+                'model': 'openai/gpt-4o-mini',
                 'batch_size': '20',
                 'api_call_delay': '5.0',
                 'api_max_retries': '3',
@@ -44,7 +44,7 @@ class ConfigManager:
                 'output_action': 'remux',
                 'add_subs_to_mkv': 'yes',
                 'set_new_sub_default': 'no',
-                'translated_track_name': '{lang_name} (Gemini v18)',
+                'translated_track_name': '{lang_name} (AI)',
                 'output_mkv_suffix': '.traducido',
                 'enable_translation_cache': 'yes',
                 'replace_original_mkv': 'no'
@@ -79,7 +79,8 @@ class ConfigManager:
 
     def _parse_config(self):
         try:
-            self.cfg['GEMINI_API_KEY'] = self.config.get('API', 'gemini_api_key')
+            self.cfg['API_KEY'] = self.config.get('API', 'api_key')
+            self.cfg['BASE_URL'] = self.config.get('API', 'base_url', fallback='https://openrouter.ai/api/v1')
             self.cfg['MKVTOOLNIX_DIR'] = self.config.get('PATHS', 'mkvtoolnix_dir') or None
             self.cfg['TARGET_LANGUAGE_NAME'] = self.config.get('TRANSLATION', 'target_language_name')
             target_codes_str = self.config.get('TRANSLATION', 'target_language_codes')
@@ -87,8 +88,7 @@ class ConfigManager:
             self.cfg['TARGET_LANGUAGE_CODES_SET'] = set(self.cfg['TARGET_LANGUAGE_CODES_LIST'])
             self.cfg['PRIMARY_TARGET_CODE'] = self.cfg['TARGET_LANGUAGE_CODES_LIST'][0]
             self.cfg['PREFERRED_SOURCE_LANG'] = self.config.get('TRANSLATION', 'preferred_source_lang')
-            preferred_models_str = self.config.get('TRANSLATION', 'preferred_models')
-            self.cfg['PREFERRED_MODELS'] = [model.strip() for model in preferred_models_str.splitlines() if model.strip() and not model.strip().startswith('#')]
+            self.cfg['MODEL'] = self.config.get('TRANSLATION', 'model', fallback='openai/gpt-4o-mini')
             self.cfg['BATCH_SIZE'] = self.config.getint('TRANSLATION', 'batch_size')
             self.cfg['API_CALL_DELAY'] = self.config.getfloat('TRANSLATION', 'api_call_delay')
             self.cfg['API_MAX_RETRIES'] = self.config.getint('TRANSLATION', 'api_max_retries')

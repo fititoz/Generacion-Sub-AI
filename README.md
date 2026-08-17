@@ -2,13 +2,13 @@
 
 Automatic MKV subtitle translation and anime chapter generation.
 
-Translates embedded subtitles in MKV files using Google Gemini AI, with optional
+Translates embedded subtitles in MKV files using OpenAI-compatible APIs, with optional
 automatic anime OP/ED chapter detection via audio correlation with animethemes.moe.
 
 ## Features
 
 - **Multi-mode input**: Sonarr (env vars), Radarr (env vars), Standalone (CLI/GUI)
-- **Gemini AI translation**: Batch translation with recursive fallback, model rotation, rate limit handling
+- **OpenAI-compatible API translation**: Batch translation with recursive fallback, rate limit handling
 - **ASS/SSA tag preservation**: Formatting tags are extracted before translation and restored after
 - **Anime chapter generation**: Automatic OP/ED detection via cross-correlation with animethemes.moe theme audio
 - **Title lookup**: English→Romaji title resolution via animetitles.xml for better theme search accuracy
