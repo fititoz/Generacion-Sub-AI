@@ -68,7 +68,7 @@ try:
         TKINTER_AVAILABLE = False
 except ImportError as e: print(f"ERROR FATAL importando ({e}).", file=sys.stderr); sys.exit(1)
 
-from src.openai_client import OpenAIClient
+from src.api_client import APIClient
 
 # --- Configuración de Logging ---
 from src.logging_setup import setup_logging
@@ -622,7 +622,7 @@ def process_file(ctx: dict, config: dict, tool_paths: dict, translation_cache: T
 
         # --- PASO 6: Configurar API ---
         try:
-            api_client = OpenAIClient(
+            api_client = APIClient(
                 api_key=config['API_KEY'],
                 base_url=config['BASE_URL'],
                 model=config['MODEL'],

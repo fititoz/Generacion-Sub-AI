@@ -117,7 +117,8 @@ class ConfigManager:
             self.cfg['REPLACE_ORIGINAL_MKV'] = self.config.getboolean('SETTINGS', 'replace_original_mkv')
             self.cfg['REORDER_EXISTING_TRACKS'] = self.config.getboolean('SETTINGS', 'reorder_existing_tracks', fallback=True)
             self.cfg['BATCH_TRANSLATION_PROMPT_TEMPLATE'] = self.config.get('PROMPTS', 'batch_template').strip()
-            self.cfg['SINGLE_TRANSLATION_PROMPT_TEMPLATE'] = self.config.get('PROMPTS', 'single_template').strip()
+            
+            self.cfg['DEBUG_TRANSLATION'] = self.config.getboolean('DEBUG', 'debug_translation', fallback=False)
 
             # --- [CHAPTERS] section (all with fallback= for backward compatibility) ---
             self.cfg['CHAPTERS_ENABLED'] = self.config.getboolean('CHAPTERS', 'enabled', fallback=False)

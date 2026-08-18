@@ -6,11 +6,9 @@ placeholder integrity, untranslated lines, and suspicious length ratios.
 Automatically re-translates lines with critical issues via single-line fallback.
 """
 import logging
-import re
 from dataclasses import dataclass
 from typing import Optional
 from src.tag_handler import restore_tags, extract_tags
-from src.constants import PLACEHOLDER_PREFIX, PLACEHOLDER_SUFFIX
 
 @dataclass
 class ValidationResult:
@@ -24,47 +22,100 @@ class ValidationResult:
 class TranslationValidator:
     def __init__(self, config: dict):
         self.config = config
+        # Modo debug: registra original + traducción de cada línea para diagnóstico
+        self.debug_translation = config.get('DEBUG_TRANSLATION', False)
 
     def validate_all(self, originals: list[str], translations: list[str]) -> list[ValidationResult]:
         if len(originals) != len(translations):
             logging.error(f"Validator mismatch: originals={len(originals)}, translations={len(translations)}")
             return []
 
+        if self.debug_translation:
+            logging.info("=== [DEBUG] INICIO DUMP DE TRADUCCIONES (original -> traducido) ===")
+
         results = []
         for i, (orig, trans) in enumerate(zip(originals, translations)):
             issues = []
+
+            if self.debug_translation:
+                logging.info(f"[DEBUG] L{i+1} ORIG: {orig!r}")
+                logging.info(f"[DEBUG] L{i+1} TRAD: {trans!r}")
             
             # 1. Verificar marcadores de error
             if trans.startswith("[[") and trans.endswith("]]"):
                 issues.append(f"Error marker detected: {trans}")
             
-            # 2. Verificar integridad de placeholders
+            # 2. Verificar integridad de tags (NO placeholders: api_client ya restauró __TAGn__ a tags reales)
+            #    Extraemos tags reales de ORIG y TRANS de forma consistente y comparamos conteos.
             cleaned_orig, orig_tags = extract_tags(orig)
-            placeholder_pattern = re.compile(f"{re.escape(PLACEHOLDER_PREFIX)}\\d+{re.escape(PLACEHOLDER_SUFFIX)}")
-            trans_placeholders = placeholder_pattern.findall(trans)
-            
-            if len(trans_placeholders) != len(orig_tags):
-                issues.append(f"Placeholder mismatch: expected {len(orig_tags)}, found {len(trans_placeholders)}")
+            _, trans_tags = extract_tags(trans)
+
+            if len(orig_tags) != len(trans_tags):
+                issues.append(f"Tag count mismatch: original={len(orig_tags)}, translation={len(trans_tags)}")
             
             # 3. Verificar si no se tradujo nada (excluyendo líneas que son solo etiquetas)
             if cleaned_orig.strip() and trans.strip() == orig.strip():
                 issues.append("Line appears untranslated (identical to original)")
 
             # 4. Verificar longitud (ratio sospechoso)
+            #    Para líneas muy cortas (<=20 chars), ser más permisivos (ratio >= 0.25)
+            #    Para líneas normales (>20 chars), threshold estricto (ratio >= 0.3)
             if len(cleaned_orig) > 10 and len(trans) > 0:
                 ratio = len(trans) / len(orig)
-                if ratio < 0.3:
+                threshold = 0.25 if len(cleaned_orig) <= 20 else 0.3
+                if ratio < threshold:
                     issues.append(f"Translation suspiciously short (ratio {ratio:.2f})")
                 elif ratio > 3.0:
                     issues.append(f"Translation suspiciously long (ratio {ratio:.2f})")
 
+            # 5. Traducción vacía (línea original con contenido pero traducción vacía)
+            if cleaned_orig.strip() and not trans.strip():
+                issues.append("Translation is empty")
+
+            # 6. Coma huérfana inicial: traducción empieza con ',' pero original no
+            if trans.lstrip().startswith(',') and not orig.lstrip().startswith(','):
+                issues.append("Leading comma artifact (dropped first word?)")
+
+            # 7. Línea muy corta (≤10 chars) que pierde contenido significativo
+            #    Si original >= 3 chars y traducción < 50% del original
+            if len(cleaned_orig) >= 3 and len(trans) > 0 and len(cleaned_orig) <= 10:
+                ratio = len(trans) / len(orig)
+                if ratio < 0.5:
+                    issues.append(f"Short line content loss (ratio {ratio:.2f})")
+
+            # 8. Ratio bajo en líneas sin tags (pérdida de contenido moderada)
+            #    Solo para líneas > 10 chars (mismo umbral que check principal)
+            #    Si no hay tags ASS y ratio < 0.5, flaggear para posible re-traducción
+            if len(orig_tags) == 0 and len(trans_tags) == 0 and len(cleaned_orig) > 10 and len(trans) > 0:
+                ratio = len(trans) / len(orig)
+                if ratio < 0.5:
+                    issues.append(f"Low content ratio, no tags (ratio {ratio:.2f})")
+
+            # 9. Artefacto de numeración batch: "N. texto" sin corchetes [N]:
+            #    Detecta respuestas crudas del modelo que ignoran el formato solicitado
+            import re
+            if re.match(r'^\d+\.\s+\w+', trans.strip()):
+                issues.append("Batch numbering artifact (raw model response)")
+
             if issues:
+                # CRÍTICO: placeholders mal, error markers, ratio muy bajo, vacía, coma huérfana,
+                # línea corta con pérdida, ratio bajo sin tags, artefacto numeración batch
+                critical = any(
+                    "Error marker" in s or "Placeholder" in s
+                    or "suspiciously short" in s
+                    or "empty" in s.lower()
+                    or "Leading comma" in s
+                    or "Short line content loss" in s
+                    or "Low content ratio" in s
+                    or "Batch numbering artifact" in s
+                    for s in issues
+                )
                 results.append(ValidationResult(
                     line_index=i,
                     original=orig,
                     translated=trans,
                     issues=issues,
-                    severity='error' if any("Error marker" in s or "Placeholder" in s for s in issues) else 'warning'
+                    severity='error' if critical else 'warning'
                 ))
         
         return results
@@ -76,23 +127,99 @@ class TranslationCorrector:
 
     def attempt_corrections(self, validation_results: list[ValidationResult], all_translations: list[str]) -> list[str]:
         """
-        Intenta corregir resultados con problemas mediante re-traducción individual.
+        Intenta corregir resultados con problemas mediante re-traducción.
+        NUEVO: Agrupa líneas con error crítico en un mini-batch numerado para 1 sola llamada API.
+        Fallback a translate_single solo para líneas que fallen en el batch.
         """
         issues_count = len(validation_results)
         if issues_count == 0:
             return all_translations
 
-        logging.info(f"Intentando corregir {issues_count} líneas con problemas...")
-        
-        for res in validation_results:
-            # Si el error es crítico (placeholders mal o marcador de error)
-            critical_issue = any("Placeholder" in issue or "Error marker" in issue for issue in res.issues)
-            
-            if critical_issue:
-                logging.info(f"Re-traduciendo línea {res.line_index + 1} individualmente por error crítico...")
+        # Filtrar solo errores críticos que requieren re-traducción
+        critical_results = [
+            res for res in validation_results
+            if any("Placeholder" in issue or "Error marker" in issue
+                   or "empty" in issue.lower()
+                   or "suspiciously short" in issue
+                   or "Leading comma" in issue
+                   or "Short line content loss" in issue
+                   or "Low content ratio" in issue
+                   or "Batch numbering artifact" in issue
+                   for issue in res.issues)
+        ]
+
+        if not critical_results:
+            logging.debug(f"{issues_count} líneas con avisos no críticos. Sin re-traducción.")
+            return all_translations
+
+        logging.info(f"Re-traduyendo {len(critical_results)} líneas con errores críticos (batch de corrección)...")
+
+        # 1. Construir mini-batch con líneas problemáticas + sus índices originales
+        error_originals = [res.original for res in critical_results]
+        error_indices = [res.line_index for res in critical_results]
+
+        # 2. Enviar como batch numerado único
+        try:
+            batch_translations = self._translate_error_batch(error_originals)
+
+            # 3. Mapear resultados a índices originales
+            for idx, trans in zip(error_indices, batch_translations):
+                if trans and trans.strip():
+                    all_translations[idx] = trans
+                    logging.debug(f"  Línea {idx + 1} corregida via batch: {trans[:60]}...")
+                else:
+                    logging.warning(f"  Línea {idx + 1}: batch devolvió vacío, fallback a individual")
+
+            # 4. Fallback individual solo para las que el batch dejó vacías
+            for i, (idx, orig) in enumerate(zip(error_indices, error_originals)):
+                if not all_translations[idx].strip():
+                    logging.info(f"  Fallback individual para línea {idx + 1}...")
+                    better_trans = self.api_client.translate_single(orig, self.cache)
+                    all_translations[idx] = better_trans
+
+        except Exception as e:
+            logging.warning(f"Batch de corrección falló ({e}), fallback a individual para todas...")
+            for res in critical_results:
+                logging.info(f"  Re-traduyendo línea {res.line_index + 1} individualmente...")
                 better_trans = self.api_client.translate_single(res.original, self.cache)
                 all_translations[res.line_index] = better_trans
-            else:
-                logging.debug(f"Línea {res.line_index + 1} marcada con avisos: {', '.join(res.issues)}. No se requiere acción crítica.")
-                
+
         return all_translations
+
+    def _translate_error_batch(self, originals: list[str]) -> list[str]:
+        """
+        Traduce un batch de líneas con errores usando la API batch.
+        Reutiliza la lógica de numeración y parsing del cliente principal.
+        """
+        if not originals:
+            return []
+
+        # Extraer tags y limpiar textos (igual que en translate_batch)
+        from src.tag_handler import extract_tags, restore_tags
+        cleaned_texts = []
+        all_tags = []
+
+        for orig in originals:
+            cleaned, tags = extract_tags(orig)
+            cleaned_texts.append(cleaned)
+            all_tags.append(tags)
+
+        # Usar el método interno de batch del cliente
+        # Nota: accedemos a _call_api_batch que ya maneja numeración y parsing
+        try:
+            translated_cleaned = self.api_client._call_api_batch(cleaned_texts)
+        except Exception as e:
+            logging.error(f"Error en _call_api_batch de corrección: {e}")
+            raise
+
+        # Restaurar tags en cada línea traducida
+        final_translations = []
+        for i, (cleaned_trans, tags) in enumerate(zip(translated_cleaned, all_tags)):
+            if i < len(translated_cleaned):
+                restored = restore_tags(cleaned_trans, tags)
+                final_translations.append(restored)
+            else:
+                # Si parse_numbered_response devolvió menos líneas, rellenar con vacío
+                final_translations.append("")
+
+        return final_translations

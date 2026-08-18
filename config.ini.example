@@ -1,77 +1,106 @@
-# config.ini
+# config.ini.example - Plantilla de configuración para el traductor de subtítulos MKV
+# INSTRUCCIONES:
+# 1. Copia este archivo como config.ini
+# 2. Rellena TUS valores reales (api_key, base_url, rutas, etc.)
+# 3. NO subas config.ini a Git (está en .gitignore)
+
 [API]
-# API Key del proveedor (OpenRouter, OpenAI, Together, Groq, etc.)
-api_key = YOUR_API_KEY_HERE
-# URL base de la API (compatible con formato OpenAI)
+# Credenciales y endpoint universal (compatible OpenAI format)
+# Proveedores soportados: OpenRouter, OpenAI, Together, Groq, Ollama, vLLM, etc.
+# Obtén tu API key en: https://openrouter.ai/keys (o tu proveedor)
+api_key = TU_API_KEY_AQUI
+# Ejemplos de base_url:
 # OpenRouter: https://openrouter.ai/api/v1
 # OpenAI oficial: https://api.openai.com/v1
 # Ollama local: http://localhost:11434/v1
 # Together AI: https://api.together.xyz/v1
-base_url = https://openrouter.ai/api/v1
+# Tu servidor local: http://localhost:20128/v1
+base_url = http://localhost:20128/v1
 
-[PATHS]
+[LLM_SETTINGS]
+# Modelo a usar (formato proveedor/modelo o nombre simple)
+# Ejemplos: openai/gpt-4o-mini, google/gemini-2.5-flash, meta-llama/llama-4-scout, gpt-4o-mini, llama3.2, auto/best-free
+model = auto/best-free
+
+# Tamaño del lote para enviar a la API
+batch_size = 50
+
+# Delay en segundos entre llamadas API (lotes o fallback individual)
+api_call_delay = 5.0
+
+# Máximo de reintentos para llamadas API fallidas (errores de red/servidor)
+api_max_retries = 3
+
+# Tiempo inicial de espera antes del primer reintento (segundos) - se duplicará en cada reintento
+api_retry_initial_delay = 20
+
+# Timeout en segundos para llamadas API individuales (fallback)
+api_single_timeout = 120
+
+# Timeout en segundos para llamadas API por lotes
+api_batch_timeout = 300
+
+# Segundos a esperar si todos los modelos alcanzan rate limit (error 429)
+rate_limit_wait_seconds = 60
+
+# Máximo de reintentos globales (reinicio de modelos) antes de fallo fatal
+rate_limit_max_global_retries = 3
+
+# Temperatura de muestreo (0.0 = determinista, 1.0 = creativo)
+temperature = 0.3
+
+# Máximo de tokens en respuesta
+max_tokens = 2000
+
+# Habilitar caché de traducciones en memoria (reduce llamadas API si hay líneas repetidas)
+enable_translation_cache = yes
+
+[MKV_OUTPUT]
+# Rutas opcionales
 # Opcional: Descomenta y edita si MKVToolNix NO está en el PATH
 # mkvtoolnix_dir = C:\Program Files\MKVToolNix
 
-[TRANSLATION]
+# Configuración de salida MKV
+# ¿Intentar añadir el subtítulo traducido al MKV? (yes/no)
+add_subs_to_mkv = yes
+
+# ¿Marcar la nueva pista de subtítulos como 'default'? (yes/no)
+set_new_sub_default = yes
+
+# Nombre para la pista de subtítulos traducida dentro del MKV
+translated_track_name = Español Latino (AI)
+
+# Nombre del archivo MKV de salida (se añade al nombre original)
+output_mkv_suffix = .traducido
+
+# ¿Reemplazar archivo MKV original con el nuevo archivo traducido? (yes/no)
+# Si es 'no', se creará un archivo nuevo con el sufijo definido en 'output_mkv_suffix'.
+# ¡ADVERTENCIA: 'yes' SOBRESCRIBIRÁ TU ARCHIVO ORIGINAL!
+replace_original_mkv = no
+
+# Acción de salida: remux (incrustar en MKV) o save_separate_sub (guardar .srt aparte)
+output_action = save_separate_sub
+
+# ¿Reordenar pistas existentes (Latino primero)? (yes/no)
+reorder_existing_tracks = yes
+
+# Configuración de idiomas
 # Idioma destino (para prompt y código MKV)
 target_language_name = Español Latino (sin censura)
 target_language_codes = es-419, lat, es, spa, und
+
 # Idioma fuente preferido para seleccionar pista
 preferred_source_lang = fre
+
 # Palabras clave (separadas por coma) para identificar variantes en nombres de pista
 # Usadas SOLO si el código de idioma es genérico (spa/es) y el objetivo no lo es.
 # Dejar vacío si no se quiere usar esta heurística.
 latino_keywords = latino, latin, latam, latin america, español americano, animo, Spanish[LAT]
 spain_keywords = españa, spain, castellano, castilian, español europeo, iberian, european, Spanish[ESP]
-# Modelo a usar (formato proveedor/modelo)
-# OpenRouter: openai/gpt-4o-mini, google/gemini-2.5-flash, meta-llama/llama-4-scout
-# OpenAI: gpt-4o-mini, gpt-4o
-# Ollama: llama3.2, mistral, qwen2.5
-model = openai/gpt-4o-mini
 
-
-# Tamaño del lote para enviar a la API
-batch_size = 50
-# Delay en segundos entre llamadas API (lotes o fallback individual)
-api_call_delay = 5.0
-# Máximo de reintentos para llamadas API fallidas (errores de red/servidor)
-api_max_retries = 3
-# Tiempo inicial de espera antes del primer reintento (segundos) - se duplicará en cada reintento
-api_retry_initial_delay = 20
-# Timeout en segundos para llamadas API individuales (fallback)
-api_single_timeout = 120
-# Timeout en segundos para llamadas API por lotes
-api_batch_timeout = 300
-# Segundos a esperar si todos los modelos alcanzan rate limit (error 429)
-rate_limit_wait_seconds = 60
-# Máximo de reintentos globales (reinicio de modelos) antes de fallo fatal
-rate_limit_max_global_retries = 3
-
-[SETTINGS]
-# Habilitar actualización automática desde GitHub (yes/no)
-auto_update = yes
-# ¿Intentar añadir el subtítulo traducido al MKV? (yes/no)
-add_subs_to_mkv = yes
-# ¿Marcar la nueva pista de subtítulos como 'default'? (yes/no)
-set_new_sub_default = yes
-# Nombre para la pista de subtítulos traducida dentro del MKV
-translated_track_name = Español Latino (AI)
-# Nombre del archivo MKV de salida (se añade al nombre original)
-output_mkv_suffix = .traducido
-# Habilitar caché de traducciones en memoria (reduce llamadas API si hay líneas repetidas)
-enable_translation_cache = yes
-# ¿Reemplazar archivo MKV original con el nuevo archivo traducido? (yes/no)
-# Si es 'no', se creará un archivo nuevo con el sufijo definido en 'output_mkv_suffix'.
-# ¡ADVERTENCIA: 'yes' SOBRESCRIBIRÁ TU ARCHIVO ORIGINAL!
-replace_original_mkv = yes
 # Tag requerido en Sonarr para ejecutar la traducción (dejar vacío para ejecutar siempre)
 # NOTA: required_sonarr_tag NO está implementado en el código actual
-required_sonarr_tag = zigzag
-# ¿Reordenar pistas existentes (Latino primero)? (yes/no)
-reorder_existing_tracks = yes
-#remux o save_separate_sub
-output_action = remux
+required_sonarr_tag =
 
 [PROMPTS]
 # Template para traducciones por lotes.
@@ -87,10 +116,10 @@ batch_template =
     5.  **Placeholders**: Preserva etiquetas como __TAG0__, __TAG1__ EXACTAMENTE en su posición relativa.
     6.  **Ortografía y Puntuación**: Usa ortografía impecable. Incluye signos de apertura (¿, ¡), tildes correctas y la letra ñ. Evita modismos regionales excesivos a menos que sea necesario para el tono.
     7.  **Consistencia**: Responde ÚNICAMENTE con las líneas traducidas numeradas. No agregues preámbulos ni explicaciones.
-    
+
     Líneas a traducir:
     {batch_text}
-    
+
     Traducciones:
 
 # Template para traducciones individuales (fallback).
@@ -98,37 +127,53 @@ batch_template =
 single_template =
     Contexto: {series_title} - {episode_title}.
     Eres un traductor experto de subtítulos especializado en anime. Traduce la siguiente línea al {target_language_name}:
-    Reglas: Natural y sin censura, preserva nombres/honoríficos, mantén etiquetas __TAGn__. Ortografía impecable (usa tildes, ¿, ¡, ñ).
-    Responde ÚNICAMENTE con la traducción.
     
-    Texto a traducir:
-    "{text}"
+    Texto original:
+    {text}
     
     Traducción:
 
 [CHAPTERS]
-# Generación automática de capítulos para anime
+# Generación automática de capítulos estilo anime (OP/ED)
 # Requiere: ffmpeg, scipy, numpy, requests, soundfile
 # Se instalan vía docker-mods al crear el contenedor
 enabled = yes
+
 # Carpeta persistente para cachear temas descargados de animethemes.moe
 # Dejar vacío para desactivar caché (descarga cada vez)
 theme_cache_dir = /config/scripts/OPED
+
 # Tamaño máximo de la caché de temas en MB (se borrarán los más antiguos si se supera)
 max_theme_cache_mb = 1024
+
 # Días máximos de vida de un archivo en la caché (TTL)
 theme_cache_ttl_days = 120
+
 # Timeout en segundos para el cálculo de correlación
 correlation_timeout = 120
+
 # Umbral mínimo de score de correlación (peak / downsample_factor)
 score_threshold = 2000
+
 # Tolerancia en segundos para snap al inicio/final del episodio
 snap_tolerance = 4.0
+
 # Duración del silencio prepuesto al audio del episodio (segundos)
 silence_duration = 5.0
+
 # Factor de downsampling para correlación (mayor = más rápido, menos preciso)
 downsample_factor = 32
+
 # Ruta base para limitar generación de capítulos (solo Sonarr)
 # Solo se generarán capítulos para archivos dentro de esta ruta
 # Dejar vacío para generar capítulos para todas las series
 anime_path = /home/biblioteca/Anime
+
+[DEBUG]
+# Modo debug: registra en el log cada línea original y su traducción
+# para diagnosticar problemas de placeholders y parsing.
+# false = desactivado, true = registra todas las líneas
+debug_translation = true
+
+# Habilitar actualización automática desde GitHub (yes/no)
+auto_update = yes

@@ -31,17 +31,24 @@ def parse_numbered_response(response: str, expected_count: int) -> dict[int, str
     """
     results = {}
     
-    # Pattern principal: [N]: texto
+# Pattern principal: [N]: texto
     primary_pattern = re.compile(r'\[(\d+)\]:\s*(.*?)(?=\s*\[?\d+\]?:|$)', re.DOTALL)
-    
+
     # Patterns alternativos para respuestas mal formateadas
     alt_patterns = [
         re.compile(r'\[(\d+)\]\s*:\s*(.*?)(?=\s*\[\d+\]|$)', re.DOTALL),  # [N] : texto (espacio antes de :)
         re.compile(r'(\d+)\):\s*(.*?)(?=\s*\d+\)|$)', re.DOTALL),  # N): texto
-        re.compile(r'(\d+)\.\s*(.*?)(?=\s*\d+\.|$)', re.DOTALL),  # N. texto
+        # N. texto - SOLO si parece formato enumerado real (no "50. Niente...")
+        re.compile(r'^(\d+)\.\s+(.+?)(?=^\d+\.\s+|\Z)', re.MULTILINE | re.DOTALL),
         re.compile(r'^(\d+):\s*(.*?)(?=^\d+:|$)', re.MULTILINE | re.DOTALL),  # N: texto (sin corchetes)
     ]
-    
+
+    # RECHAZO TEMPRANO: detectar basura tipo "50. Niente correcto." (número + punto + texto sin corchetes)
+    # Esto ocurre cuando el modelo ignora el formato [N]: y contesta libre
+    if re.search(r'^\d+\.\s+\w+', response, re.MULTILINE) and not re.search(r'\[\d+\]:', response):
+        logging.warning("Respuesta malformada detectada (formato 'N. texto' sin corchetes). Rechazando para forzar fallback.")
+        return {}  # Forzar validación a fallar → fallback a translate_single
+
     # Intentar con el patrón principal primero
     matches = primary_pattern.findall(response)
     

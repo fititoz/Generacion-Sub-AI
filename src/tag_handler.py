@@ -43,8 +43,9 @@ def restore_tags(translated_text: str, original_tags: list):
             restored_text = restored_text.replace(placeholder, tag, 1)
             placeholders_found += 1
         else:
-            logging.warning("Placeholder '%s' NO encontrado...", placeholder)
+            logging.warning("Placeholder '%s' NO encontrado; devolviendo texto sin restaurar tag: %s", placeholder, tag)
             placeholders_missing.append(placeholder)
+            # NO modificamos el texto: el validador detectará tag count mismatch y forzar re-traducción
 
     remaining_placeholders_re = re.compile(f"{re.escape(PLACEHOLDER_PREFIX)}\\d+{re.escape(PLACEHOLDER_SUFFIX)}")
     remaining_matches = remaining_placeholders_re.findall(restored_text)
