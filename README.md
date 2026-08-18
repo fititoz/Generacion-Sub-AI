@@ -84,7 +84,6 @@ src/
 ├── __version__.py       — CalVer version (2026.08.1)
 ├── config_manager.py    — config.ini parser
 ├── api_client.py        — Universal LLM API client (OpenAI-compatible) + retry logic
-├── model_manager.py     — Model rotation + rate limit tracking
 ├── cache_manager.py     — Translation result cache
 ├── tag_handler.py       — ASS/SSA tag extraction/restoration
 ├── line_numbering.py    — Batch line numbering for API
