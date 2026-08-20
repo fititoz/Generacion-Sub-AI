@@ -22,6 +22,7 @@ from typing import Optional, List, Tuple, Dict, Any
 
 from src.constants import (
     CHAPTER_NAMES,
+    BIN_FFMPEG,
     DOWNSAMPLE_FACTOR,
     SILENCE_DURATION,
     SCORE_THRESHOLD,
@@ -462,7 +463,7 @@ def extract_episode_audio(mkv_path: Path, tmpdir: Path) -> Optional[Path]:
 
     output_wav = tmpdir / "episode_audio.wav"
     cmd = [
-        'ffmpeg',
+        BIN_FFMPEG,
         '-i', str(mkv_path),
         '-map', '0:a:0',       # First audio track
         '-ac', '1',            # Mono
@@ -531,7 +532,7 @@ def load_and_downsample(audio_path: Path, downsample_factor: int) -> Optional[Tu
                 try:
                     import subprocess
                     proc = subprocess.run(
-                        ['ffmpeg', '-i', str(audio_path), '-ac', '1', '-ar', str(target_sr),
+                        [BIN_FFMPEG, '-i', str(audio_path), '-ac', '1', '-ar', str(target_sr),
                          '-y', str(wav_path)],
                         capture_output=True, text=True, encoding='utf-8', errors='replace',
                         timeout=60,

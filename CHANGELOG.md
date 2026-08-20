@@ -3,6 +3,24 @@
 All notable changes to this project will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [2026.08.5] - 2026-08-20
+
+### Added
+- Constantes centralizadas de binarios externos en `src/constants.py` (`BIN_MKVMERGE`, `BIN_MKVEXTRACT`, `BIN_FFMPEG`) como única fuente de verdad.
+
+### Changed
+- `check_mkvtoolnix_tools` usa las constantes de binarios en lugar de literales.
+- `chapter_generator.py` usa `BIN_FFMPEG` para extracción/conversión de audio.
+- Comentario obsoleto actualizado: referencia a `OpenAIClient`/`openai_client.py` → `APIClient`/`api_client.py`.
+
+### Removed
+- `src/model_manager.py` (código muerto: clase `ModelManager` no referenciada por el cliente actual).
+- `src/__pycache__/openai_client.cpython-314.pyc` (bytecode huérfano de módulo ya renombrado).
+- `cache/model_state.json` (archivo huérfano escrito solo por `ModelManager`).
+
+### Fixed
+- `SyntaxError` en `Generacion_Sub_AI.py` (f-string anidada con barra invertida, inválida en Python 3.11): extraído `name_part` fuera de la f-string.
+
 ## [2026.08.1] - 2026-08-18
 
 ### Added

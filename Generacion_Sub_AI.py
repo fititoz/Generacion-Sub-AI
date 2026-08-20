@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Script Version: 2026.03
+# Script Version: 2026.08.5
 """
 Generacion_Sub_AI — MKV subtitle translator with anime chapter generation.
 
@@ -100,11 +100,11 @@ def check_mkvtoolnix_tools(config):
     mkvmerge_path = None
     mkvextract_path = None
     if mkvtoolnix_dir:
-        mkvmerge_path = Path(mkvtoolnix_dir) / ('mkvmerge.exe' if os.name == 'nt' else 'mkvmerge')
-        mkvextract_path = Path(mkvtoolnix_dir) / ('mkvextract.exe' if os.name == 'nt' else 'mkvextract')
+        mkvmerge_path = Path(mkvtoolnix_dir) / (f"{BIN_MKVMERGE}.exe" if os.name == 'nt' else BIN_MKVMERGE)
+        mkvextract_path = Path(mkvtoolnix_dir) / (f"{BIN_MKVEXTRACT}.exe" if os.name == 'nt' else BIN_MKVEXTRACT)
     logging.debug("Verificando MKVToolNix...")
-    mkvmerge = find_executable('mkvmerge', str(mkvmerge_path) if mkvmerge_path else None)
-    mkvextract = find_executable('mkvextract', str(mkvextract_path) if mkvextract_path else None)
+    mkvmerge = find_executable(BIN_MKVMERGE, str(mkvmerge_path) if mkvmerge_path else None)
+    mkvextract = find_executable(BIN_MKVEXTRACT, str(mkvextract_path) if mkvextract_path else None)
     mkvextract_needed = True
     mkvmerge_needed = config.get('OUTPUT_ACTION', 'remux') == 'remux'
     tools_ok = True
@@ -201,7 +201,7 @@ def get_subtitle_extension(codec_id):
 from src.tag_handler import extract_tags, restore_tags
 
 # --- Funciones de Traducción ---
-# (Las funciones de traducción ahora se gestionan a través de la clase OpenAIClient en src/openai_client.py)
+# (Las funciones de traducción ahora se gestionan a través de la clase APIClient en src/api_client.py)
 
 
 
@@ -539,9 +539,10 @@ def process_file(ctx: dict, config: dict, tool_paths: dict, translation_cache: T
             lang = lang if lang else 'und'
             track_name_lower = (name or '').lower()
 
+            name_part = f", N='{name}'" if name else ""
             details = (
                 f"  - Pista {i}: ID={tid}, T='{ttype}', L='{lang}', C='{codec}'"
-                f"{f', N=\'{name}\'' if name else ''}"
+                f"{name_part}"
                 f"{' (Def)' if default else ''}"
                 f"{' (Forz)' if forced else ''}"
             )

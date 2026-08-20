@@ -6,6 +6,11 @@ chapter names, correlation engine parameters, API endpoints, and cache settings.
 """
 import re
 
+# --- External binary names (single source of truth) ---
+BIN_MKVMERGE = 'mkvmerge'
+BIN_MKVEXTRACT = 'mkvextract'
+BIN_FFMPEG = 'ffmpeg'
+
 # --- Regex y Constantes ---
 TAG_REGEX = re.compile(
     r'('
