@@ -3,6 +3,13 @@
 All notable changes to this project will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [2026.08.6] - 2026-08-21
+
+### Fixed
+- **NameError crítico en ejecución standalone**: `Generacion_Sub_AI.py` usaba `BIN_MKVMERGE`/`BIN_MKVEXTRACT` sin importarlos desde `src.constants`. Añadidos al import (rompía `check_mkvtoolnix_tools` al iniciar).
+- **Updater**: bug de indentación — el bloque de descarga/extracción/reescritura de archivos estaba fuera del `if latest_parts > curr_parts`, ejecutándose en cada run aunque no hubiera versión nueva (sobrescritura innecesaria). Ahora solo corre cuando hay actualización.
+- **Updater**: el endpoint `/releases/latest` devolvía 404 (solo existía el tag, no el Release). Manejo de 404 ahora es informativo en lugar de warning.
+
 ## [2026.08.5] - 2026-08-20
 
 ### Added

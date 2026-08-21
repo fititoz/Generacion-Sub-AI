@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Script Version: 2026.08.5
+# Script Version: 2026.08.6
 """
 Generacion_Sub_AI — MKV subtitle translator with anime chapter generation.
 
@@ -29,7 +29,7 @@ import configparser
 import shlex
 import math
 from concurrent.futures import ThreadPoolExecutor
-from src.constants import TAG_REGEX, CACHE_DIR_NAME, CACHE_FILE_NAME, LOG_FILENAME, PLACEHOLDER_PREFIX, PLACEHOLDER_SUFFIX, REQUIRED_PACKAGES
+from src.constants import TAG_REGEX, CACHE_DIR_NAME, CACHE_FILE_NAME, LOG_FILENAME, PLACEHOLDER_PREFIX, PLACEHOLDER_SUFFIX, REQUIRED_PACKAGES, BIN_MKVMERGE, BIN_MKVEXTRACT
 import re
 import importlib.metadata
 
