@@ -170,10 +170,15 @@ downsample_factor = 32
 anime_path = /home/biblioteca/Anime
 
 [DEBUG]
-# Modo debug: registra en el log cada línea original y su traducción
-# para diagnosticar problemas de placeholders y parsing.
-# false = desactivado, true = registra todas las líneas
+# Modo debug: registra en el log cada línea original y su traducción,
+# respuestas crudas de la API por batch, decisiones del fallback recursivo
+# y restauración de placeholders. Para diagnosticar problemas de parsing.
+# false = desactivado, true = registra todas las etapas
 debug_translation = true
+
+# Máximo de caracteres a volcar por respuesta cruda de la API en modo debug.
+# 0 = desactiva el volcado crudo. Default: 800
+debug_max_chars = 800
 
 # Habilitar actualización automática desde GitHub (yes/no)
 auto_update = yes

@@ -51,18 +51,21 @@ def parse_numbered_response(response: str, expected_count: int) -> dict[int, str
 
     # Intentar con el patrón principal primero
     matches = primary_pattern.findall(response)
+    pattern_used = "principal [N]:"
     
     # Si el patrón principal no encuentra suficientes resultados, probar alternativos
     if len(matches) < expected_count * 0.5:  # Menos del 50% encontrado
         logging.debug(f"Patrón principal encontró solo {len(matches)}/{expected_count}. Probando alternativos...")
-        for alt_pattern in alt_patterns:
+        for pi, alt_pattern in enumerate(alt_patterns):
             alt_matches = alt_pattern.findall(response)
             if len(alt_matches) > len(matches):
                 matches = alt_matches
+                pattern_used = f"alternativo #{pi + 1}"
                 logging.debug(f"Patrón alternativo encontró {len(matches)} resultados.")
                 if len(matches) >= expected_count * 0.8:
                     break
     
+    duplicates = []
     for index_str, text in matches:
         try:
             idx = int(index_str)
@@ -72,9 +75,15 @@ def parse_numbered_response(response: str, expected_count: int) -> dict[int, str
                 content = content[1:-1]
             # Limpiar saltos de línea internos que no deberían estar
             content = content.replace('\n', ' ').strip()
+            if idx in results:
+                duplicates.append(idx)  # se conserva la última ocurrencia
             results[idx] = content
         except ValueError:
             continue
+
+    logging.debug("Parseo: patrón_usado=%s, matches=%d, únicos=%d/%d, duplicados=%s",
+                  pattern_used, len(matches), len(results), expected_count,
+                  sorted(set(duplicates))[:10] if duplicates else "ninguno")
     
     # Log de diagnóstico si hay discrepancia significativa
     if len(results) < expected_count:

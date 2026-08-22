@@ -64,6 +64,9 @@ class TranslationCache:
 
     def set(self, key, value):
         if self.enable_cache:
+            # Guardia: no cachear texto con placeholders sin restaurar
+            if isinstance(value, str) and "__TAG" in value:
+                logging.warning("[CACHE] Rechazado guardado con placeholder sin restaurar. key=%r value=%r", key[:80], value[:120])
             self.cache[key] = value
             if len(self.cache) > self.max_entries:
                 self._prune_cache()

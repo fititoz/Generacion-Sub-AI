@@ -112,7 +112,7 @@ def _select_season_entry(anime_list: list, season_number: int, series_title: str
         for pattern in _SEASON_PATTERNS:
             match = pattern.search(combined)
             if match and match.groups() and int(match.group(1)) == season_number:
-                logging.info("[Chapters] Temporada %d encontrada por nombre: '%s'", season_number, name)
+                logging.debug("[Chapters] Temporada %d encontrada por nombre: '%s'", season_number, name)
                 return entry
 
     # Strategy 2: Year-based ordering
@@ -128,7 +128,7 @@ def _select_season_entry(anime_list: list, season_number: int, series_title: str
                   [(e.get('name', '?'), e.get('year', '?')) for e in related_sorted])
     if season_number <= len(related_sorted):
         selected = related_sorted[season_number - 1]
-        logging.info("[Chapters] Temporada %d seleccionada por orden cronológico: '%s' (año %s)",
+        logging.debug("[Chapters] Temporada %d seleccionada por orden cronológico: '%s' (año %s)",
                      season_number, selected.get('name', '?'), selected.get('year', '?'))
         return selected
 
@@ -156,7 +156,7 @@ def search_anime_themes(series_title: str, *, season_number: int | None = None, 
         return None
 
     try:
-        logging.info("[Chapters] Buscando temas en animethemes.moe para '%s'...", series_title)
+        logging.debug("[Chapters] Buscando temas en animethemes.moe para '%s'...", series_title)
         response = requests.get(
             f"{ANIMETHEMES_API_BASE}{ANIMETHEMES_SEARCH_ENDPOINT}",
             params={
@@ -255,7 +255,7 @@ def search_anime_themes(series_title: str, *, season_number: int | None = None, 
 
             key = 'op_themes' if theme_type == 'OP' else 'ed_themes'
             result[key].append({'url': audio_url, 'slug': slug})
-            logging.info("[Chapters] Tema encontrado: %s (url=%s...)", slug, audio_url[:60])
+            logging.debug("[Chapters] Tema encontrado: %s (url=%s...)", slug, audio_url[:60])
 
         if not result['op_themes'] and not result['ed_themes']:
             logging.info("[Chapters] No se encontraron URLs de audio para temas.")
@@ -295,7 +295,7 @@ def _download_theme_file(url: str, dest_path: Path) -> bool:
 
         # Atomic rename
         os.replace(str(tmp_path), str(dest_path))
-        logging.info("[Chapters] Tema descargado OK: %s (%d bytes)", dest_path.name, dest_path.stat().st_size)
+        logging.debug("[Chapters] Tema descargado OK: %s (%d bytes)", dest_path.name, dest_path.stat().st_size)
         return True
 
     except Exception as e:
@@ -352,7 +352,7 @@ def get_theme_files(
             if (file_path.exists()
                     and file_path.stat().st_size >= THEME_MIN_FILE_SIZE
                     and cached.get('url') == url):
-                logging.info("[Chapters] Usando tema cacheado: %s", file_path.name)
+                logging.debug("[Chapters] Usando tema cacheado: %s", file_path.name)
                 result[theme_type].append(file_path)
                 continue
 
@@ -473,7 +473,7 @@ def extract_episode_audio(mkv_path: Path, tmpdir: Path) -> Optional[Path]:
     ]
 
     try:
-        logging.info("[Chapters] Extrayendo audio del episodio con ffmpeg...")
+        logging.debug("[Chapters] Extrayendo audio del episodio con ffmpeg...")
         proc = subprocess.run(
             cmd,
             capture_output=True,
@@ -490,7 +490,7 @@ def extract_episode_audio(mkv_path: Path, tmpdir: Path) -> Optional[Path]:
             logging.warning("[Chapters] Audio extraído vacío o no creado.")
             return None
 
-        logging.info("[Chapters] Audio extraído OK: %s (%.1f MB)", output_wav.name, output_wav.stat().st_size / 1048576)
+        logging.debug("[Chapters] Audio extraído OK: %s (%.1f MB)", output_wav.name, output_wav.stat().st_size / 1048576)
         return output_wav
 
     except subprocess.TimeoutExpired:
@@ -650,9 +650,9 @@ def correlate_theme(
         offset, score = result if result else (None, 0.0)
 
         if offset is not None:
-            logging.info("[Chapters] Correlación encontrada: offset=%.2fs (score=%.1f)", offset, score)
+            logging.debug("[Chapters] Correlación encontrada: offset=%.2fs (score=%.1f)", offset, score)
         else:
-            logging.info("[Chapters] Correlación por debajo del umbral.")
+            logging.debug("[Chapters] Correlación por debajo del umbral.")
 
         return (offset, score) if return_score else offset
 
@@ -837,7 +837,7 @@ def write_ogm_chapters(
 
         logging.info("[Chapters] Archivo OGM escrito: %s (%d capítulos)", output_path.name, len(chapters))
         for ts, name in chapters:
-            logging.info("[Chapters]   %s = %s", _format_timestamp(ts), name)
+            logging.debug("[Chapters]   %s = %s", _format_timestamp(ts), name)
 
         return output_path
 
@@ -865,11 +865,11 @@ def generate_chapters(series_title: str, mkv_path: Path, tmpdir: Path, config: d
                 from src.title_lookup import lookup_romaji_title
                 romaji = lookup_romaji_title(series_title, Path(cache_dir_str))
                 if romaji:
-                    logging.info("[Chapters] Usando título romaji: '%s' (original: '%s')", romaji, series_title)
+                    logging.debug("[Chapters] Usando título romaji: '%s' (original: '%s')", romaji, series_title)
                     series_title = romaji
                     _query_is_romaji = True
                 else:
-                    logging.info("[Chapters] Sin título romaji. Usando original: '%s'", series_title)
+                    logging.debug("[Chapters] Sin título romaji. Usando original: '%s'", series_title)
             except Exception as e:
                 logging.warning("[Chapters] Error en title_lookup (ignorado): %s", e)
 

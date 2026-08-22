@@ -483,7 +483,7 @@ def process_file(ctx: dict, config: dict, tool_paths: dict, translation_cache: T
         mkv_info = None
         if tool_paths and tool_paths.get('mkvmerge'):
             try:
-                logging.info("Obteniendo info detallada (mkvmerge -J)...")
+                logging.debug("Obteniendo info detallada (mkvmerge -J)...")
                 mkvmerge_cmd = [tool_paths['mkvmerge'], '-J', str(mkv_path)]
                 result = subprocess.run(mkvmerge_cmd, capture_output=True, text=True, check=True, encoding='utf-8', errors='replace', timeout=60)
                 mkv_info = json.loads(result.stdout)
@@ -504,7 +504,7 @@ def process_file(ctx: dict, config: dict, tool_paths: dict, translation_cache: T
         else: logging.info("mkvmerge no disponible.")
 
         # --- PASO 3: Análisis pymkv ---
-        logging.info("Analizando estructura pymkv: %s...", mkv_path.name)
+        logging.debug("Analizando estructura pymkv: %s...", mkv_path.name)
         try:
             mkv = MKVFile(str(mkv_path))
             if tool_paths and tool_paths.get('mkvmerge'):
@@ -512,7 +512,7 @@ def process_file(ctx: dict, config: dict, tool_paths: dict, translation_cache: T
                     mkv.mkvmerge_path = tool_paths['mkvmerge']
                 except Exception as e_assign:
                     logging.warning(f"No se pudo asignar mkvmerge_path a pymkv: {e_assign}")
-            logging.info("Análisis pymkv OK.")
+            logging.debug("Análisis pymkv OK.")
         except Exception as e: logging.exception("Error fatal análisis pymkv:"); return
 
         # --- PASO 4: Comprobar pista objetivo ---
@@ -664,21 +664,20 @@ def process_file(ctx: dict, config: dict, tool_paths: dict, translation_cache: T
                     season_number=config.get('SEASON_NUMBER')
                 )
             # --- 8. Extraer Sub Fuente ---
-            logging.info("--- Extracción Sub Fuente ---")
+            t_extract = time.time()
             source_sub_ext = get_subtitle_extension(source_codec_id)
             tmp_sub_extracted = Path(tmpdir) / f"track_{src_track_id}_source{source_sub_ext}"
             cmd_extract = [tool_paths['mkvextract'], str(mkv_path), 'tracks', f'{src_track_id}:{str(tmp_sub_extracted)}']
-            logging.info("Ejecutando mkvextract...")
+            logging.debug("Ejecutando mkvextract...")
             try:
                 proc_extract = subprocess.run(cmd_extract, check=True, capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=180)
-                logging.info("Extracción OK.")
+                logging.info("Extracción OK (%.1fs).", time.time() - t_extract)
             except Exception as e:
                 logging.exception("Fallo extracción mkvextract")
                 raise
             if not tmp_sub_extracted.exists() or tmp_sub_extracted.stat().st_size == 0:
                 raise Exception("Extracted file empty/missing")
             # --- 9. Cargar Subs ---
-            logging.info("--- Carga Subs ---")
             loaded = False
             subs = None
             best_enc = 'utf-8'
@@ -716,7 +715,6 @@ def process_file(ctx: dict, config: dict, tool_paths: dict, translation_cache: T
                 logging.warning("Subtítulo sin texto traducible en %s", mkv_path.name)
                 return
             logging.info("--- Traducción (%d líneas válidas, con fallback recursivo) ---", num_proc)
-            logging.info("Modelo inicial: '%s'. Delay API: %.1fs.", api_client.current_model_name, config['API_CALL_DELAY'])
             t_start = time.time()
             
             stats = {'ok':0, 'errors': 0, 'processed': num_proc}
@@ -726,19 +724,16 @@ def process_file(ctx: dict, config: dict, tool_paths: dict, translation_cache: T
                 logging.error(f"Fallo crítico en traducción recursiva: {e}")
                 all_translated_results = ["[[ERROR_FATAL_TRADUCTOR]]"] * num_proc
 
-            t_end = time.time()
-            logging.info("--- Resumen Traducción ---")
-            logging.info("Completada en %.2fs. Líneas procesadas: %d/%d", t_end - t_start, stats['processed'], num_proc)
-
-            # --- NUEVO: Análisis Post-Traducción ---
-            logging.info("--- Análisis Post-Traducción ---")
+            # --- Análisis Post-Traducción ---
             validator = TranslationValidator(config)
             validation_results = validator.validate_all(lines_to_translate_original, all_translated_results)
             
+            corrected_count = 0
             issues_found = [r for r in validation_results if r.issues]
             if issues_found:
                 corrector = TranslationCorrector(api_client, translation_cache)
                 all_translated_results = corrector.attempt_corrections(issues_found, all_translated_results)
+                corrected_count = len(issues_found)
             else:
                 logging.info("Análisis completado: ¡No se detectaron problemas!")
 
@@ -752,7 +747,10 @@ def process_file(ctx: dict, config: dict, tool_paths: dict, translation_cache: T
                     stats['errors'] += 1
                     logging.warning("Error persistente línea [%d]: %s", original_subs_index, final_translated_text)
 
-            logging.info("  Resultados Finales: OK=%d | Errores=%d", stats['ok'], stats['errors'])
+            t_end = time.time()
+            logging.info("--- Resumen Traducción: %d líneas en %.1fs | OK=%d | Errores=%d | Corregidas=%d/%d con issues ---",
+                         num_proc, t_end - t_start, stats['ok'], stats['errors'],
+                         corrected_count, len(validation_results))
             # --- Recoger resultado de capítulos (si se ejecutó en paralelo) ---
             if chapter_future is not None:
                 try:
@@ -816,10 +814,10 @@ def process_file(ctx: dict, config: dict, tool_paths: dict, translation_cache: T
                         mkvmerge_cmd_add.append(str(saved_subtitle_temp_path))
                         # --- Fin Comando mkvmerge CORREGIDO ---
                         try:
-                            logging.info("Ejecutando mkvmerge...")
+                            t_mux = time.time()
                             logging.debug("Cmd: %s", ' '.join(shlex.quote(str(p)) for p in mkvmerge_cmd_add))
                             proc_add = subprocess.run(mkvmerge_cmd_add, check=True, capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=600)
-                            logging.info("Muxing OK -> %s", mux_output_temp_path.name)
+                            logging.info("Muxing OK -> %s (%.1fs)", mux_output_temp_path.name, time.time() - t_mux)
                             final_action_successful = True
                         except Exception as e:
                             logging.exception("Error muxing")
@@ -924,6 +922,12 @@ def main():
 
     config_manager = ConfigManager(config_path)
     config = config_manager.get_all()
+
+    # Reconfigurar logging ahora que conocemos debug_translation
+    # (el file handler sube a DEBUG y se activa la traza por etapa)
+    if config.get('DEBUG_TRANSLATION'):
+        setup_logging(debug_mode=True)
+        logging.info("Modo DEBUG_TRANSLATION activo: traza completa en el archivo de log.")
 
     # --- Auto-Updater ---
     if config.get('AUTO_UPDATE', True):

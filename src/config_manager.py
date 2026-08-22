@@ -188,6 +188,7 @@ class ConfigManager:
 
         # [DEBUG] section
         self.cfg['DEBUG_TRANSLATION'] = self.config.getboolean('DEBUG', 'debug_translation', fallback=False)
+        self.cfg['DEBUG_MAX_CHARS'] = self.config.getint('DEBUG', 'debug_max_chars', fallback=800)
         self.cfg['AUTO_UPDATE'] = self.config.getboolean('DEBUG', 'auto_update', fallback=True)
 
     def get_all(self) -> dict:

@@ -26,7 +26,10 @@ def extract_tags(text: str):
     
     # Luego extraemos el resto de etiquetas complejas
     cleaned_text = TAG_REGEX.sub(replacer, text_with_protected_breaks)
-    
+
+    if tags:
+        logging.debug("[EXTRACT] %d tag(s) extraídos %r de: %.80r", len(tags), tags, text)
+
     return cleaned_text, tags
 
 def restore_tags(translated_text: str, original_tags: list):
@@ -44,6 +47,7 @@ def restore_tags(translated_text: str, original_tags: list):
             placeholders_found += 1
         else:
             logging.warning("Placeholder '%s' NO encontrado; devolviendo texto sin restaurar tag: %s", placeholder, tag)
+            logging.warning("[RESTORE] TRAD cruda: %r", translated_text)
             placeholders_missing.append(placeholder)
             # NO modificamos el texto: el validador detectará tag count mismatch y forzar re-traducción
 

@@ -31,15 +31,15 @@ class TranslationValidator:
             return []
 
         if self.debug_translation:
-            logging.info("=== [DEBUG] INICIO DUMP DE TRADUCCIONES (original -> traducido) ===")
+            logging.debug("=== [DEBUG] INICIO DUMP DE TRADUCCIONES (original -> traducido) ===")
 
         results = []
         for i, (orig, trans) in enumerate(zip(originals, translations)):
             issues = []
 
             if self.debug_translation:
-                logging.info(f"[DEBUG] L{i+1} ORIG: {orig!r}")
-                logging.info(f"[DEBUG] L{i+1} TRAD: {trans!r}")
+                logging.debug(f"[DEBUG] L{i+1} ORIG: {orig!r}")
+                logging.debug(f"[DEBUG] L{i+1} TRAD: {trans!r}")
             
             # 1. Verificar marcadores de error
             if trans.startswith("[[") and trans.endswith("]]"):
@@ -117,6 +117,9 @@ class TranslationValidator:
                     issues=issues,
                     severity='error' if critical else 'warning'
                 ))
+                if self.debug_translation:
+                    logging.debug("[DEBUG] L%d ISSUES (%s): %s | TRAD: %r",
+                                  i + 1, 'error' if critical else 'warning', issues, trans)
         
         return results
 
@@ -152,7 +155,14 @@ class TranslationCorrector:
             logging.debug(f"{issues_count} líneas con avisos no críticos. Sin re-traducción.")
             return all_translations
 
-        logging.info(f"Re-traduyendo {len(critical_results)} líneas con errores críticos (batch de corrección)...")
+        logging.info(f"Re-traduyendo {len(critical_results)} líneas con errores críticos (batch de corrección):")
+        for res in critical_results:
+            # Mostrar POR QUÉ se re-traduce cada línea: issues + par orig/trad truncado
+            orig_preview = res.original[:70] + ('...' if len(res.original) > 70 else '')
+            trad_preview = res.translated[:70] + ('...' if len(res.translated) > 70 else '')
+            logging.info(f"  L{res.line_index + 1} [{res.severity}] {res.issues}")
+            logging.info(f"      ORIG: {orig_preview!r}")
+            logging.info(f"      TRAD: {trad_preview!r}")
 
         # 1. Construir mini-batch con líneas problemáticas + sus índices originales
         error_originals = [res.original for res in critical_results]

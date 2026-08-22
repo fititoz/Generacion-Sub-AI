@@ -3,6 +3,25 @@
 All notable changes to this project will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [2026.08.7] - 2026-08-21
+
+### Added
+- **Chunking real por `batch_size`** (`translate_recursive_fallback`): los lotes se dividen en grupos de N líneas (default 50). Antes se enviaban TODAS las líneas del archivo en una sola llamada y el modelo cortaba la salida por `max_tokens` (~100 líneas buenas, resto vacío). Fallo aislado por chunk: si un lote revienta, los ya traducidos se conservan.
+- **Progreso visible en consola**: `Batch N/M: enviando K líneas (batch_size=50)...` por lote, y `[individual] X/Y (línea Z): OK|ERROR` en el fallback línea-a-línea.
+- **Parseo parcial tolerante**: si una respuesta de batch vuelve incompleta (`finish_reason=length`), se conservan las líneas bien parseadas y solo las faltantes van a reintento. Antes se descartaba el lote entero y se reenviaba completo.
+- **Limpieza de eco `original -> traducción`** (`strip_source_echo`): algunos modelos ignoran el formato numerado y devuelven `"inglés -> español"`; ese eco ya no llega al subtítulo final.
+- **Instrumentación de debug ampliada**: volcado crudo de respuestas API por batch (truncable con nuevo `[DEBUG] debug_max_chars`, default 800), decisiones del fallback recursivo, restauración de placeholders tag-por-tag, dump original→traducción en el validador y conteo de entradas de caché.
+
+### Changed
+- **Pacing efectivo**: `api_call_delay` (default 5s) ahora se aplica antes de cada petición. Era config muerta: las llamadas se disparaban sin pausa (~2 req/s sostenidos) hasta que NVIDIA/OpenRouter bloqueaba con 429.
+- **Backoff real ante 429**: espera `rate_limit_wait_seconds` (60s) o el header `Retry-After` del servidor si lo envía (acotado a 120s). Antes solo esperaba 4/8/16s.
+- **Reintentos internos del SDK desactivados** (`OpenAI(max_retries=0)`): los micro-reintentos sub-segundo del SDK openai quemaban cuota justo cuando había que darle aire a la API; ahora la única capa de reintento es la propia, con backoff real.
+- **Test de conexión inicial vía `_call_api`**: hereda pacing + reintentos + espera de rate limit. Si la API rachea 429 al arrancar, el script espera con paciencia en vez de abortar.
+
+### Fixed
+- **404/500 transitorios ahora reintentables**: `_is_retryable_error` solo reconocía 502/503/504 — un `Error code: 404` o `500` bajo carga quedaba como `[[ERROR_API_SINGLE]]` permanente aunque reintentar funcionara (visible en logs: 404 seguidos de 200 OK).
+- **`LineCountMismatchError` lanzado con firma incorrecta**: el propio `raise` explotaba con `TypeError`, enmascarando el error real y descartando traducciones ya obtenidas del lote.
+
 ## [2026.08.6] - 2026-08-21
 
 ### Fixed
