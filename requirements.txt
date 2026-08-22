@@ -1,3 +1,15 @@
+# --- Core: traduccion de subtitulos (siempre requerido) ---
 openai
 pysubs2
 pymkv
+
+# --- Opcional: generacion de capitulos ([CHAPTERS] enabled = true) ---
+# Importados de forma diferida solo si la feature esta activa.
+numpy
+scipy
+requests
+soundfile
+
+# tkinter no se instala via pip:
+#   - Windows/macOS: incluido con el instalador oficial de Python
+#   - Linux: apt install python3-tk (usado como fallback del file picker en modo standalone)
