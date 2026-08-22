@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [2026.08.8] - 2026-08-22
+
+### Fixed
+- **Ejecución directa en Linux/Sonarr (exit 127)**: `Generacion_Sub_AI.py` y `src/constants.py` estaban guardados en el repo con finales de línea CRLF de Windows. El shebang quedaba como `#!/usr/bin/env python3\r` y el kernel buscaba un intérprete inexistente (`python3<CR>`). Ambos archivos normalizados a LF.
+- **Prevención**: nuevo `.gitattributes` con `* text=auto eol=lf` — git normaliza todo texto a LF en el repo y en los zipballs de release, independiente del SO desde donde se comitee.
+
 ## [2026.08.7] - 2026-08-21
 
 ### Added

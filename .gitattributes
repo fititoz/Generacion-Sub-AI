@@ -1,0 +1,5 @@
+# Forzar LF en texto: evita shebang roto ("python3\r") al ejecutar en Linux/Sonarr
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
