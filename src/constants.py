@@ -38,7 +38,6 @@ CACHE_FILE_NAME = "translation_cache.json"
 LOG_FILENAME = 'translate_mkv_subs.log'
 PLACEHOLDER_PREFIX = "__TAG"
 PLACEHOLDER_SUFFIX = "__"
-BATCH_FAILURE_INDICATOR = "[[BATCH_TRANSLATION_FAILED_IRRECOVERABLY]]"
 
 REQUIRED_PACKAGES = {
     "openai": "openai",

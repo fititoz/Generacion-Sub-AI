@@ -20,3 +20,14 @@ nul
 
 # Planning artifacts
 .sisyphus/
+
+# Agent/session working artifacts (local-only)
+.agents/
+skills-lock.json
+GATES.md
+PLAN.md
+gates/
+audit/
+plan-evidence/
+docs/
+AGENTS.md

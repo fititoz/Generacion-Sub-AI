@@ -11,11 +11,13 @@ import math
 from openai import OpenAI, RateLimitError, APITimeoutError, APIConnectionError as OpenAIConnectionError
 from src.tag_handler import extract_tags, restore_tags
 from src.cache_manager import TranslationCache
-from src.exceptions import (
-    APIResponseError, LineCountMismatchError,
-    ContentBlockedError, TranslationTimeoutError
-)
+from src.exceptions import APIResponseError, ContentBlockedError, TranslationTimeoutError
+from src.protocol import is_error_sentinel, make_error
 from src.line_numbering import add_line_numbers, parse_numbered_response, validate_response_indices
+
+# Escalera de reintento interna (no configurable por INI desde 2026.08.9)
+MAX_RETRIES = 3          # intentos extra tras el primero
+RETRY_BASE_DELAY_S = 2   # base del backoff exponencial (2/4/8...)
 
 
 def strip_source_echo(translated: str, source: str) -> str:
@@ -36,15 +38,16 @@ def strip_source_echo(translated: str, source: str) -> str:
 class APIClient:
     """Cliente universal para APIs compatibles con OpenAI (base_url + api_key)."""
 
-    def __init__(self, api_key: str, base_url: str, model: str, config: dict):
-        self.api_key = api_key
-        self.base_url = base_url
-        self.model = model
-        self.config = config
+    def __init__(self, cfg, file_ctx):
+        self.cfg = cfg
+        self.api_key = cfg.api_key
+        self.base_url = cfg.base_url
+        self.model = cfg.model
+        self._file = file_ctx
         self.client = None
         # Debug: truncado configurable del volcado de respuestas crudas (0 = sin volcado)
-        self._debug = bool(config.get('DEBUG_TRANSLATION', False))
-        self._debug_max_chars = int(config.get('DEBUG_MAX_CHARS', 800))
+        self._debug = bool(cfg.debug_translation)
+        self._debug_max_chars = int(cfg.debug_max_chars)
         self._last_call_ts = 0.0
         self._configure_client()
 
@@ -78,7 +81,7 @@ class APIClient:
             self.client = OpenAI(
                 api_key=self.api_key,
                 base_url=self.base_url,
-                timeout=self.config.get('API_SINGLE_TIMEOUT', 120),
+                timeout=self.cfg.api_single_timeout,
                 max_retries=0,
             )
             # Test de conexión vía _call_api: hereda pacing + reintentos + espera de 429
@@ -111,7 +114,7 @@ class APIClient:
             "timeout", "connection", "network",
             "503", "502", "504", "500", "404",
             "service unavailable", "internal error", "internal server error",
-            "temporary"
+            "temporary", "sin choices", "respuesta vacía"
         ]
         return any(indicator in error_str for indicator in retryable_indicators)
 
@@ -127,12 +130,12 @@ class APIClient:
 
     def _call_api(self, messages: list, max_retries: int = None, timeout: int = None) -> str:
         """Llama a la API con reintentos automáticos y backoff exponencial."""
-        max_retries = max_retries or self.config.get('MAX_RETRIES', 3)
-        base_delay = self.config.get('RETRY_BASE_DELAY', 2)
+        max_retries = max_retries or MAX_RETRIES
+        base_delay = RETRY_BASE_DELAY_S
         
         for attempt in range(max_retries + 1):
             # Pacing: respetar api_call_delay entre llamadas para no saturar la API (evita 429)
-            call_delay = float(self.config.get('API_CALL_DELAY', 0))
+            call_delay = float(self.cfg.api_call_delay)
             if call_delay > 0:
                 elapsed = time.time() - self._last_call_ts
                 if elapsed < call_delay:
@@ -141,7 +144,7 @@ class APIClient:
             self._last_call_ts = time.time()
             
             try:
-                self._dbg("API", f"Intento {attempt + 1}/{max_retries + 1} (timeout={timeout or self.config.get('API_SINGLE_TIMEOUT', 120)}s)")
+                self._dbg("API", f"Intento {attempt + 1}/{max_retries + 1} (timeout={timeout or self.cfg.api_single_timeout}s)")
                 if timeout:
                     # Crear cliente temporal con timeout personalizado
                     temp_client = OpenAI(
@@ -153,18 +156,23 @@ class APIClient:
                     response = temp_client.chat.completions.create(
                         model=self.model,
                         messages=messages,
-                        temperature=self.config.get('TEMPERATURE', 0.3),
-                        max_tokens=self.config.get('MAX_TOKENS', 2000),
+                        temperature=self.cfg.temperature,
+                        max_tokens=self.cfg.max_tokens,
                     )
                 else:
                     response = self.client.chat.completions.create(
                         model=self.model,
                         messages=messages,
-                        temperature=self.config.get('TEMPERATURE', 0.3),
-                        max_tokens=self.config.get('MAX_TOKENS', 2000),
+                        temperature=self.cfg.temperature,
+                        max_tokens=self.cfg.max_tokens,
                     )
                 
-                content = response.choices[0].message.content
+                choices = getattr(response, "choices", None)
+                if not choices:
+                    # Proveedores inestables: a veces responden 200 con choices
+                    # vacío/None ('NoneType' object is not subscriptable).
+                    raise APIResponseError("Respuesta del proveedor sin choices (transitoria)")
+                content = choices[0].message.content
                 if content is None:
                     raise APIResponseError("Respuesta vacía de la API")
                 finish_reason = getattr(response.choices[0], 'finish_reason', '?')
@@ -179,7 +187,7 @@ class APIClient:
                 if attempt < max_retries and self._is_retryable_error(e):
                     if self._is_rate_limit_error(e):
                         # 429: esperar de verdad — header Retry-After si existe, o RATE_LIMIT_WAIT_SECONDS
-                        rl_wait = float(self.config.get('RATE_LIMIT_WAIT_SECONDS', 60))
+                        rl_wait = float(self.cfg.rate_limit_wait_seconds)
                         retry_after = self._get_retry_after(e)
                         delay = min(retry_after, 120.0) if retry_after else rl_wait
                     else:
@@ -199,18 +207,18 @@ class APIClient:
             return []
 
         batch_text_numbered = add_line_numbers(cleaned_texts_list)
-        batch_size_info = f"{len(cleaned_texts_list)} líneas"
+        batch_size_info = str(len(cleaned_texts_list))
 
         system_prompt = (
             "Eres un traductor experto de subtítulos especializado en anime. "
             "Responde SOLO con las traducciones numeradas en el formato [N]: texto, sin explicaciones."
         )
-        user_prompt = self.config['BATCH_TRANSLATION_PROMPT_TEMPLATE'].format(
-            target_language_name=self.config['TARGET_LANGUAGE_NAME'],
+        user_prompt = self.cfg.prompt_batch_template.format(
+            target_language_name=self.cfg.target_language_name,
             batch_size_info=batch_size_info,
             batch_text=batch_text_numbered,
-            series_title=self.config.get('SERIES_TITLE', 'Desconocido'),
-            episode_title=self.config.get('EPISODE_TITLE', 'Desconocido')
+            series_title=self._file.series_title,
+            episode_title=self._file.episode_title
         )
 
         messages = [
@@ -221,7 +229,7 @@ class APIClient:
         self._dbg("BATCH", f"Enviando n={len(cleaned_texts_list)}. Primeras líneas: {cleaned_texts_list[:3]!r}")
 
         try:
-            api_result_full = self._call_api(messages, timeout=self.config.get('API_BATCH_TIMEOUT', 300))
+            api_result_full = self._call_api(messages, timeout=self.cfg.api_batch_timeout)
 
             # Etapa 2: respuesta cruda del modelo (cabeza; cola si el parseo falla)
             self._dbg_dump("BATCH", api_result_full)
@@ -259,7 +267,7 @@ class APIClient:
         if not original_text or original_text.isspace():
             return ""
 
-        if self.config['ENABLE_TRANSLATION_CACHE'] and cache is not None and original_text in cache:
+        if self.cfg.enable_translation_cache and cache is not None and original_text in cache:
             return cache.get(original_text)
 
         cleaned_text, tags = extract_tags(original_text)
@@ -270,11 +278,11 @@ class APIClient:
             "Eres un traductor experto de subtítulos especializado en anime. "
             "Responde SOLO con la traducción, sin explicaciones ni comillas adicionales."
         )
-        user_prompt = self.config['SINGLE_TRANSLATION_PROMPT_TEMPLATE'].format(
-            target_language_name=self.config['TARGET_LANGUAGE_NAME'],
+        user_prompt = self.cfg.prompt_single_template.format(
+            target_language_name=self.cfg.target_language_name,
             text=cleaned_text,
-            series_title=self.config.get('SERIES_TITLE', 'Desconocido'),
-            episode_title=self.config.get('EPISODE_TITLE', 'Desconocido')
+            series_title=self._file.series_title,
+            episode_title=self._file.episode_title
         )
 
         messages = [
@@ -293,13 +301,13 @@ class APIClient:
             final_text = restore_tags(translated_cleaned, tags)
             if tags:
                 self._dbg("RESTORE", f"tags={tags!r} -> final={final_text!r}")
-            if self.config['ENABLE_TRANSLATION_CACHE'] and cache is not None:
+            if self.cfg.enable_translation_cache and cache is not None:
                 cache.set(original_text, final_text)
             return final_text
 
         except Exception as e:
             logging.error("Error en traducción individual: %s", e)
-            return f"[[ERROR_API_SINGLE: {str(e)[:50]}]]"
+            return make_error("ERROR_API_SINGLE", str(e)[:50])
 
     def translate_recursive_fallback(self, original_texts: list, cache: TranslationCache, current_level=0, max_level=3):
         """Traduce con fallback recursivo: batch → dividir → individual."""
@@ -313,7 +321,7 @@ class APIClient:
         for i, text in enumerate(original_texts):
             if not text or text.isspace():
                 final_results[i] = ""
-            elif self.config['ENABLE_TRANSLATION_CACHE'] and cache is not None and text in cache:
+            elif self.cfg.enable_translation_cache and cache is not None and text in cache:
                 final_results[i] = cache.get(text)
             else:
                 cleaned, tags = extract_tags(text)
@@ -334,13 +342,13 @@ class APIClient:
             for pos, idx in enumerate(texts_to_process_indices, 1):
                 result = self.translate_single(original_texts[idx], cache)
                 final_results[idx] = result
-                status = "OK" if not str(result).startswith("[[ERROR") else "ERROR"
+                status = "OK" if not is_error_sentinel(str(result)) else "ERROR"
                 logging.info("%s[individual] %d/%d (línea %d): %s",
                              indent, pos, total_single, idx + 1, status)
         else:
             # Intentar batch POR CHUNKS de batch_size. Nunca mandar todo junto:
             # el modelo corta la salida por max_tokens y devuelve vacías desde cierto punto.
-            batch_size = max(1, int(self.config.get('BATCH_SIZE', 50)))
+            batch_size = max(1, int(self.cfg.batch_size))
             total_chunks = (len(cleaned_to_translate) + batch_size - 1) // batch_size
             try:
                 batch_results = [None] * len(cleaned_to_translate)
@@ -371,7 +379,7 @@ class APIClient:
                         final_results[idx] = restore_tags(batch_result, tags)
                         if tags:
                             self._dbg("RESTORE", f"L{idx+1} tags={tags!r} -> final={final_results[idx]!r}")
-                        if self.config['ENABLE_TRANSLATION_CACHE'] and cache is not None:
+                        if self.cfg.enable_translation_cache and cache is not None:
                             cache.set(original, final_results[idx])
                     else:
                         all_ok = False
@@ -390,22 +398,6 @@ class APIClient:
                         for orig_idx, retry_result in zip(failed_indices, retry_results):
                             final_results[orig_idx] = retry_result
 
-            except LineCountMismatchError as e:
-                # Fallback recursivo dividiendo el batch
-                mid = len(cleaned_to_translate) // 2
-                self._dbg("FALLBACK", f"L{current_level}: batch falló ({e}). Dividiendo {len(cleaned_to_translate)} "
-                                      f"→ [1..{mid}] + [{mid+1}..{len(cleaned_to_translate)}]")
-                left_texts = [original_texts[i] for i in texts_to_process_indices[:mid]]
-                right_texts = [original_texts[i] for i in texts_to_process_indices[mid:]]
-                
-                left_results = self.translate_recursive_fallback(left_texts, cache, current_level + 1, max_level)
-                right_results = self.translate_recursive_fallback(right_texts, cache, current_level + 1, max_level)
-                
-                for idx, result in zip(texts_to_process_indices[:mid], left_results):
-                    final_results[idx] = result
-                for idx, result in zip(texts_to_process_indices[mid:], right_results):
-                    final_results[idx] = result
-                    
             except Exception as e:
                 logging.warning("%sBatch falló (%s), dividiendo...", indent, e)
                 mid = len(cleaned_to_translate) // 2

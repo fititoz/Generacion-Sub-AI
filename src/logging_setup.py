@@ -28,8 +28,16 @@ def setup_logging(debug_mode: bool = False):
 
     # Silenciar ruido de SDKs de terceros: 1 línea "HTTP Request ... 200 OK"
     # por cada llamada API satura el log en lotes grandes.
-    for noisy in ('httpx', 'httpcore', 'openai', 'openai._client'):
+    for noisy in ('httpx', 'httpcore', 'openai', 'openai._client', 'openai._base_client'):
         logging.getLogger(noisy).setLevel(logging.WARNING)
+
+    class _SdkTraceFilter(logging.Filter):
+        """Corta trazas internas del SDK (p. ej. _trace.py close.started/complete)
+        pase lo que pase con el nombre del logger emisor."""
+        def filter(self, record):
+            return record.filename != "_trace.py"
+
+    sdk_trace_filter = _SdkTraceFilter()
 
     log_file_path = Path(__file__).parent.parent / LOG_FILENAME
     os.makedirs(log_file_path.parent, exist_ok=True)
@@ -38,6 +46,7 @@ def setup_logging(debug_mode: bool = False):
         file_handler = RotatingFileHandler(log_file_path, mode='a', maxBytes=5242880, backupCount=2, encoding='utf-8')
         file_handler.setFormatter(log_formatter_file)
         file_handler.setLevel(log_level_file)
+        file_handler.addFilter(sdk_trace_filter)
         logger.addHandler(file_handler)
     except Exception as e:
         print(f"Error logging archivo {log_file_path}: {e}", file=sys.stderr)
@@ -45,6 +54,7 @@ def setup_logging(debug_mode: bool = False):
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setFormatter(log_formatter_console)
     console_handler.setLevel(log_level_console)
+    console_handler.addFilter(sdk_trace_filter)
     logger.addHandler(console_handler)
     logging.debug("Logging configurado. Archivo: %s, Nivel archivo: %s, Nivel consola: %s, Debug: %s",
                   log_file_path if 'file_handler' in locals() else "N/A",

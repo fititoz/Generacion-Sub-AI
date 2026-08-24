@@ -9,6 +9,7 @@ import logging
 from dataclasses import dataclass
 from typing import Optional
 from src.tag_handler import restore_tags, extract_tags
+from src.protocol import NUMBERED_ARTIFACT_RE, is_error_sentinel
 
 @dataclass
 class ValidationResult:
@@ -20,10 +21,10 @@ class ValidationResult:
     severity: str = 'info' # 'info', 'warning', 'error'
 
 class TranslationValidator:
-    def __init__(self, config: dict):
-        self.config = config
+    def __init__(self, cfg):
+        self.cfg = cfg
         # Modo debug: registra original + traducción de cada línea para diagnóstico
-        self.debug_translation = config.get('DEBUG_TRANSLATION', False)
+        self.debug_translation = cfg.debug_translation
 
     def validate_all(self, originals: list[str], translations: list[str]) -> list[ValidationResult]:
         if len(originals) != len(translations):
@@ -42,7 +43,7 @@ class TranslationValidator:
                 logging.debug(f"[DEBUG] L{i+1} TRAD: {trans!r}")
             
             # 1. Verificar marcadores de error
-            if trans.startswith("[[") and trans.endswith("]]"):
+            if is_error_sentinel(trans):
                 issues.append(f"Error marker detected: {trans}")
             
             # 2. Verificar integridad de tags (NO placeholders: api_client ya restauró __TAGn__ a tags reales)
@@ -93,8 +94,7 @@ class TranslationValidator:
 
             # 9. Artefacto de numeración batch: "N. texto" sin corchetes [N]:
             #    Detecta respuestas crudas del modelo que ignoran el formato solicitado
-            import re
-            if re.match(r'^\d+\.\s+\w+', trans.strip()):
+            if NUMBERED_ARTIFACT_RE.match(trans.strip()):
                 issues.append("Batch numbering artifact (raw model response)")
 
             if issues:

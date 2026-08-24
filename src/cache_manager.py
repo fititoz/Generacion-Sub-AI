@@ -11,6 +11,7 @@ import os
 import shutil
 from pathlib import Path
 from src.constants import CACHE_DIR_NAME, CACHE_FILE_NAME
+from src.protocol import contains_placeholder
 
 class TranslationCache:
     def __init__(self, enable_cache: bool, max_entries: int = 10000):
@@ -65,7 +66,7 @@ class TranslationCache:
     def set(self, key, value):
         if self.enable_cache:
             # Guardia: no cachear texto con placeholders sin restaurar
-            if isinstance(value, str) and "__TAG" in value:
+            if contains_placeholder(value):
                 logging.warning("[CACHE] Rechazado guardado con placeholder sin restaurar. key=%r value=%r", key[:80], value[:120])
             self.cache[key] = value
             if len(self.cache) > self.max_entries:

@@ -616,7 +616,7 @@ def _correlate_worker(episode_data, theme_data, score_threshold: int) -> Tuple[O
 def correlate_theme(
     episode_data: Tuple,
     theme_data: Tuple,
-    config: dict,
+    cfg,
     *,
     return_score: bool = False,
 ) -> Any:
@@ -628,9 +628,9 @@ def correlate_theme(
     """
     from concurrent.futures import ProcessPoolExecutor, TimeoutError as FuturesTimeoutError
 
-    timeout = config.get('CORRELATION_TIMEOUT', CORRELATION_TIMEOUT)
-    score_threshold = config.get('SCORE_THRESHOLD', SCORE_THRESHOLD)
-    downsample_factor = config.get('DOWNSAMPLE_FACTOR', DOWNSAMPLE_FACTOR)
+    timeout = cfg.correlation_timeout
+    score_threshold = cfg.score_threshold
+    downsample_factor = cfg.downsample_factor
     # Match IONI0/SubsPlus-Scripts: divide threshold by downsample factor
     adjusted_threshold = score_threshold / downsample_factor
 
@@ -667,16 +667,16 @@ def correlate_theme(
 def find_chapter_offsets(
     episode_data: Tuple,
     theme_files: Dict[str, List[Path]],
-    config: dict,
+    cfg,
 ) -> dict[str, float | None]:
     """
     Find OP and ED offsets in the episode audio.
     Returns dict with 'op_start', 'op_end', 'ed_start', 'ed_end' keys (values in seconds or None).
     """
     offsets = {'op_start': None, 'op_end': None, 'ed_start': None, 'ed_end': None}
-    downsample_factor = config.get('DOWNSAMPLE_FACTOR', DOWNSAMPLE_FACTOR)
-    silence_duration = config.get('SILENCE_DURATION', SILENCE_DURATION)
-    snap_tolerance = config.get('SNAP_TOLERANCE', SNAP_TOLERANCE)
+    downsample_factor = cfg.downsample_factor
+    silence_duration = cfg.silence_duration
+    snap_tolerance = cfg.snap_tolerance
 
     episode_ds, episode_sr = episode_data
 
@@ -702,7 +702,7 @@ def find_chapter_offsets(
             theme_duration = len(theme_ds) / episode_sr
 
             # Use only a portion of the theme for correlation (handles cut-off/fade-out)
-            theme_portion = config.get('THEME_PORTION', THEME_PORTION)
+            theme_portion = cfg.theme_portion
             theme_ds_sliced = theme_ds[:int(len(theme_ds) * theme_portion)]
 
             # Prepend silence to episode for detecting themes at the very start
@@ -716,7 +716,7 @@ def find_chapter_offsets(
             offset, score = correlate_theme(
                 (episode_with_silence, episode_sr),
                 (theme_ds_sliced, episode_sr),
-                config,
+                cfg,
                 return_score=True,
             )
 
@@ -850,7 +850,7 @@ def write_ogm_chapters(
 # Section 5: Orchestrator
 # ============================================================
 
-def generate_chapters(series_title: str, mkv_path: Path, tmpdir: Path, config: dict, *, season_number: int | None = None) -> Optional[Path]:
+def generate_chapters(series_title: str, mkv_path: Path, tmpdir: Path, cfg, *, season_number: int | None = None) -> Optional[Path]:
     """
     Orquestador principal para la generación de capítulos.
     Coordina la búsqueda de temas, extracción de audio, correlación y escritura de capítulos.
@@ -858,7 +858,7 @@ def generate_chapters(series_title: str, mkv_path: Path, tmpdir: Path, config: d
     try:
         logging.info("[Chapters] Iniciando generación de capítulos para '%s'...", series_title)
         # 0.5. Buscar título romanizado (x-jat) para mejor match en animethemes.moe
-        cache_dir_str = config.get('CHAPTERS_THEME_CACHE_DIR')
+        cache_dir_str = cfg.theme_cache_dir
         _query_is_romaji = False
         if cache_dir_str:
             try:
@@ -880,7 +880,7 @@ def generate_chapters(series_title: str, mkv_path: Path, tmpdir: Path, config: d
             return None
 
         # 2. Determinar directorio de caché para los temas
-        cache_dir_str = config.get('CHAPTERS_THEME_CACHE_DIR')
+        cache_dir_str = cfg.theme_cache_dir
         cache_dir = Path(cache_dir_str) if cache_dir_str else tmpdir
 
         # 3. Descargar u obtener archivos de audio de los temas
@@ -894,13 +894,13 @@ def generate_chapters(series_title: str, mkv_path: Path, tmpdir: Path, config: d
             return None
 
         # 5. Cargar y remuestrear el audio del episodio
-        downsample_factor = config.get('DOWNSAMPLE_FACTOR', DOWNSAMPLE_FACTOR)
+        downsample_factor = cfg.downsample_factor
         episode_data = load_and_downsample(episode_wav, downsample_factor)
         if not episode_data:
             return None
 
         # 6. Encontrar los offsets de tiempo para los capítulos mediante correlación
-        offsets = find_chapter_offsets(episode_data, theme_files, config)
+        offsets = find_chapter_offsets(episode_data, theme_files, cfg)
         if all(v is None for v in offsets.values()):
             logging.info("[Chapters] No se encontraron coincidencias de temas para '%s'", series_title)
             return None

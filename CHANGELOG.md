@@ -3,6 +3,41 @@
 All notable changes to this project will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [2026.08.9] - 2026-08-23
+
+### Changed
+- **Configuración efectiva (refactor arquitectural)**: `src/config_manager.py` ahora es el dueño único de las claves — una tabla (`SPEC`) define sección, tipo y default de cada una, y expone `Config`, un objeto inmutable con atributos tipados (`cfg.batch_size`). Los ~118 accesos por diccionario/cadena fueron migrados a atributos; añadir o renombrar una clave ya no puede hacerse en un solo archivo y romper otro en silencio.
+- **Prompt batch endurecido** (reglas nuevas/ampliadas, sincronizadas entre defaults e `config.ini.example`): numeración empieza en `[1]` nunca `[0]`; número entre corchetes sin markdown; sin preámbulos ni frases de cierre; horarios tipo `21:45` dentro del texto tal cual; tuteo determinista (voseo solo si el nombre del idioma lo indica); prohibido devolver el original sin traducir; longitud natural similar a la original.
+- **Prompt individual endurecido** (`single_template`): alinea sus reglas con el batch — tono determinista (tuteo/voseo), preservación de nombres y honoríficos, anti copy-through, placeholders intactos, sin markdown ni preámbulos, longitud natural. Evita que las líneas re-traducidas (fallback/corrección) cambien de estilo respecto al resto del episodio.
+- **Protocolo de traducción unificado** (`src/protocol.py`, nuevo módulo dueño del vocabulario de cable): gramática `[N]:`, alfabeto `__TAGn__` y sentinelas `[[…]]` comparten ahora una única definición y predicado — antes había tres criterios distintos repartidos en tres archivos.
+- **Subtítulos legítimos con corchetes dobles ya no se descartan**: el corte post-traducción usaba `startswith("[[")`, que se comía texto real tipo `[[OVA]]`; ahora solo los sentinelas con kind registrado (`ERROR_API_SINGLE`, `ERROR_FATAL_TRADUCTOR`) cuentan como error.
+- **Truncado por números con dos puntos corregido en el parseo principal**: `[2]: El reloj marcaba 21:45` devolvía "El reloj marcaba" — el marcador siguiente ahora debe empezar en línea nueva.
+- **Aviso de claves desconocidas**: las claves presentes en `config.ini` que no pertenecen a la tabla se registran como warning (`clave_desconocida: [SECCIÓN] clave (ignorada)`).
+- **Contexto de archivo**: `FileContext` (títulos, temporada, capítulos habilitados) viaja ahora como parámetro inmutable; `process_file` dejó de mutar y restaurar el dict de configuración (elimina la carrera con el hilo de capítulos).
+
+### Added
+- `theme_portion` publicada en `[CHAPTERS]` (0.9) — antes era constante interna consumida sin estar documentada.
+- `debug_max_chars` añadida a los defaults internos.
+- `tests/test_config_parity.py`: cruza example ↔ tabla ↔ tipos (requiere `pytest`, solo desarrollo).
+
+### Fixed
+- **Privacidad: `debug_translation` ahora es `false` por defecto** (example y defaults internos). Con `true` se volcaban subtítulos completos al log y consola — hallazgo S1 de la auditoría.
+- **Detector de rutas de otra máquina**: si `anime_path`, `theme_cache_dir` o `mkvtoolnix_dir` apuntan a rutas inexistentes en el host actual (clásico al copiar config.ini entre Windows y Sonarr), se registra warning `ruta_inexistente: ...`. Caso real: `anime_path = C:\Users\...` en el contenedor Linux dejaba los capítulos muertos en silencio.
+- **Respuestas del proveedor con `choices` vacío/None** ('NoneType' object is not subscriptable, observado 40 veces en una corrida real): ahora se detectan explícitamente y son reintentables en vez de matar el chunk completo.
+- **Flood de `_trace.py close.started/close.complete`** (trazas internas del SDK HTTP) en el archivo de log: filtradas a nivel de handler, independiente del nombre del logger emisor.
+- **Duplicación "líneas líneas"** en el prompt batch ("las siguientes 50 líneas líneas"): `batch_size_info` llevaba la palabra y el template también.
+- **Truncado por números con dos puntos en el parseo principal**: `[2]: El reloj marcaba 21:45` devolvía "El reloj marcaba" — el marcador siguiente ahora debe empezar en línea nueva.
+- **`anime_path` vuelve a funcionar**: la clave se leía con el nombre equivocado (`CHAPTERS_ANIME_PATH`); el filtro documentado nunca se aplicaba.
+- **Comentario desactualizado en el example**: los deps de capítulos NO vienen vía docker-mods; los instala pip en runtime. Añadido consejo de `max_tokens = 4000` para ASS muy taggeados y nota de rutas por-máquina en las instrucciones.
+
+### Removed
+- `BATCH_FAILURE_INDICATOR` (constante sin referencias desde su nacimiento) y el bloque `except LineCountMismatchError` en `api_client.py` (excepción que nadie lanza; la clase permanece en `exceptions.py` por compatibilidad).
+- Claves sin efecto real, con sus entradas del ejemplo:
+  - `api_max_retries` / `api_retry_initial_delay`: el código leía otros nombres; la escalera de reintentos es interna (3 intentos, base 2s con backoff exponencial).
+  - `rate_limit_max_global_retries`: la rotación de modelos ante 429 no existe en el producto.
+  - `add_subs_to_mkv`: la acción real la define `output_action`.
+  Los usuarios con esas claves en su `config.ini` verán un warning y serán ignoradas.
+
 ## [2026.08.8] - 2026-08-22
 
 ### Fixed

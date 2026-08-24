@@ -8,6 +8,14 @@ all expected line indices are present in the response.
 import re
 import logging
 
+from src.protocol import (
+    ALT_NUMBERED_PATTERNS,
+    NUMBERING_START,
+    NUMBERED_ARTIFACT_RE,
+    PRIMARY_NUMBERED_RE,
+    format_numbered_line,
+)
+
 def add_line_numbers(texts: list[str]) -> str:
     """
     Wraps each line in [N]: prefix for API consumption.
@@ -16,10 +24,10 @@ def add_line_numbers(texts: list[str]) -> str:
     [2]: Dynamic subtitle
     """
     numbered_lines = []
-    for i, text in enumerate(texts, 1):
+    for i, text in enumerate(texts, NUMBERING_START):
         # Aseguramos que el texto no tenga saltos de línea internos que rompan el formato
         clean_text = text.replace('\n', ' ')
-        numbered_lines.append(f"[{i}]: {clean_text}")
+        numbered_lines.append(format_numbered_line(i, clean_text))
     return "\n".join(numbered_lines)
 
 def parse_numbered_response(response: str, expected_count: int) -> dict[int, str]:
@@ -30,22 +38,15 @@ def parse_numbered_response(response: str, expected_count: int) -> dict[int, str
     MEJORA: Soporta múltiples formatos de respuesta de la IA.
     """
     results = {}
-    
-# Pattern principal: [N]: texto
-    primary_pattern = re.compile(r'\[(\d+)\]:\s*(.*?)(?=\s*\[?\d+\]?:|$)', re.DOTALL)
 
-    # Patterns alternativos para respuestas mal formateadas
-    alt_patterns = [
-        re.compile(r'\[(\d+)\]\s*:\s*(.*?)(?=\s*\[\d+\]|$)', re.DOTALL),  # [N] : texto (espacio antes de :)
-        re.compile(r'(\d+)\):\s*(.*?)(?=\s*\d+\)|$)', re.DOTALL),  # N): texto
-        # N. texto - SOLO si parece formato enumerado real (no "50. Niente...")
-        re.compile(r'^(\d+)\.\s+(.+?)(?=^\d+\.\s+|\Z)', re.MULTILINE | re.DOTALL),
-        re.compile(r'^(\d+):\s*(.*?)(?=^\d+:|$)', re.MULTILINE | re.DOTALL),  # N: texto (sin corchetes)
-    ]
+    # Patrones canónicos vivos en src/protocol.py (dueño del vocabulario)
+    primary_pattern = PRIMARY_NUMBERED_RE
+
+    alt_patterns = ALT_NUMBERED_PATTERNS
 
     # RECHAZO TEMPRANO: detectar basura tipo "50. Niente correcto." (número + punto + texto sin corchetes)
     # Esto ocurre cuando el modelo ignora el formato [N]: y contesta libre
-    if re.search(r'^\d+\.\s+\w+', response, re.MULTILINE) and not re.search(r'\[\d+\]:', response):
+    if NUMBERED_ARTIFACT_RE.search(response) and not re.search(r'\[\d+\]:', response):
         logging.warning("Respuesta malformada detectada (formato 'N. texto' sin corchetes). Rechazando para forzar fallback.")
         return {}  # Forzar validación a fallar → fallback a translate_single
 

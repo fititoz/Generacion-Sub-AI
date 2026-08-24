@@ -74,7 +74,8 @@ from src.api_client import APIClient
 from src.logging_setup import setup_logging
 
 # --- Carga de Configuración ---
-from src.config_manager import ConfigManager
+from src.config_manager import load_config, FileContext
+from src.protocol import is_error_sentinel, make_error
 
 from src.cache_manager import TranslationCache
 from src.translation_validator import TranslationValidator, TranslationCorrector
@@ -95,8 +96,8 @@ def find_executable(name, provided_path=None):
         return os.path.normpath(executable_path)
     logging.debug("No se encontró '%s'", name)
     return None
-def check_mkvtoolnix_tools(config):
-    mkvtoolnix_dir = config.get('MKVTOOLNIX_DIR')
+def check_mkvtoolnix_tools(cfg):
+    mkvtoolnix_dir = cfg.mkvtoolnix_dir
     mkvmerge_path = None
     mkvextract_path = None
     if mkvtoolnix_dir:
@@ -106,7 +107,7 @@ def check_mkvtoolnix_tools(config):
     mkvmerge = find_executable(BIN_MKVMERGE, str(mkvmerge_path) if mkvmerge_path else None)
     mkvextract = find_executable(BIN_MKVEXTRACT, str(mkvextract_path) if mkvextract_path else None)
     mkvextract_needed = True
-    mkvmerge_needed = config.get('OUTPUT_ACTION', 'remux') == 'remux'
+    mkvmerge_needed = cfg.output_action == 'remux'
     tools_ok = True
     if mkvextract_needed and not mkvextract:
         logging.error("mkvextract necesario no encontrado.")
@@ -129,11 +130,11 @@ def check_mkvtoolnix_tools(config):
         pass
     logging.debug(f"MKVToolNix check OK. Encontrado: {list(found_tools.keys())}")
     return found_tools
-def select_subtitle_track(tracks, track_codecs, config):
+def select_subtitle_track(tracks, track_codecs, cfg):
     candidates = []
     image_subs_found = []
-    preferred_lang = config['PREFERRED_SOURCE_LANG']
-    target_codes_set = config['TARGET_LANGUAGE_CODES_SET']
+    preferred_lang = cfg.preferred_source_lang
+    target_codes_set = cfg.target_language_codes_set
     logging.info("Buscando pista fuente (excluyendo: %s)...", target_codes_set)
     for t in tracks:
         tid = getattr(t, 'track_id', '?')
@@ -205,21 +206,21 @@ from src.tag_handler import extract_tags, restore_tags
 
 
 
-def _try_generate_chapters(series_title: str, mkv_path: Path, mkv_info: dict, config: dict, tmpdir_path: Path, *, season_number: int | None = None) -> Path | None:
+def _try_generate_chapters(file_ctx: FileContext, mkv_path: Path, mkv_info: dict, cfg, tmpdir_path: Path) -> Path | None:
     """
     Attempt chapter generation if enabled and MKV has no existing chapters.
     Returns the path to the generated OGM chapter file, or None.
     Safe to call from any code path — all errors are caught and logged.
     """
-    if not config.get('CHAPTERS_ENABLED'):
+    if not file_ctx.chapters_enabled:
         return None
-    if config.get('OUTPUT_ACTION') != 'remux':
+    if cfg.output_action != 'remux':
         return None
     if bool((mkv_info or {}).get('chapters')):
         logging.info("[Chapters] MKV ya tiene capítulos. Omitiendo generación.")
         return None
     # Filtro de ruta: solo generar capítulos si el MKV está bajo la ruta configurada
-    chapters_anime_path = config.get('CHAPTERS_ANIME_PATH')
+    chapters_anime_path = cfg.anime_path
     if chapters_anime_path:
         try:
             mkv_resolved = str(mkv_path.resolve())
@@ -238,8 +239,8 @@ def _try_generate_chapters(series_title: str, mkv_path: Path, mkv_info: dict, co
 
     try:
         chapter_file_path = generate_chapters(
-            series_title, mkv_path, tmpdir_path, config,
-            season_number=season_number
+            file_ctx.series_title, mkv_path, tmpdir_path, cfg,
+            season_number=file_ctx.season_number
         )
         if chapter_file_path:
             logging.info("[Chapters] Capítulos generados: %s", chapter_file_path.name)
@@ -248,7 +249,7 @@ def _try_generate_chapters(series_title: str, mkv_path: Path, mkv_info: dict, co
         logging.warning("[Chapters] Error en generación de capítulos (ignorado): %s", e)
         return None
 
-def _embed_chapters_standalone(mkv_path: Path, chapter_file: Path, config: dict, tool_paths: dict) -> bool:
+def _embed_chapters_standalone(mkv_path: Path, chapter_file: Path, cfg, tool_paths: dict) -> bool:
     """Embed OGM chapters into an MKV file using mkvmerge (standalone, without reordering tracks)."""
     if not tool_paths or not tool_paths.get('mkvmerge'):
         logging.warning("[Chapters] mkvmerge no disponible para embedding standalone.")
@@ -263,7 +264,7 @@ def _embed_chapters_standalone(mkv_path: Path, chapter_file: Path, config: dict,
         ]
         subprocess.run(chap_cmd, check=True, capture_output=True, text=True,
                         encoding='utf-8', errors='replace', timeout=300)
-        if config.get('REPLACE_ORIGINAL_MKV', True):
+        if cfg.replace_original_mkv:
             os.replace(temp_chap_out, mkv_path)
             logging.info("[Chapters] Capítulos embebidos exitosamente (standalone).")
         else:
@@ -437,7 +438,7 @@ def _extract_contexts(mode: str) -> list[dict]:
     return contexts
 
 
-def process_file(ctx: dict, config: dict, tool_paths: dict, translation_cache: TranslationCache):
+def process_file(ctx: dict, cfg, tool_paths: dict, translation_cache: TranslationCache):
     """Procesa un único archivo MKV basado en el contexto proporcionado."""
     mkv_path = ctx['mkv_path']
     series_title = ctx['series_title']
@@ -448,11 +449,16 @@ def process_file(ctx: dict, config: dict, tool_paths: dict, translation_cache: T
     final_action_successful = False
     output_sub_ext = '.srt'
 
-    # Radarr override: deshabilitar capítulos
-    original_chapters_enabled = config.get('CHAPTERS_ENABLED')
-    if ctx['chapters_override'] is False:
-        config['CHAPTERS_ENABLED'] = False
+    # Contexto por archivo (inmutable). Radarr nunca genera capítulos.
+    if ctx['chapters_override'] is False and cfg.chapters_enabled:
         logging.info("[Radarr] Capítulos deshabilitados para películas.")
+    file_ctx = FileContext(
+        mkv_path=mkv_path,
+        series_title=series_title,
+        episode_title=episode_title,
+        season_number=season_number,
+        chapters_enabled=cfg.chapters_enabled and ctx['chapters_override'] is not False,
+    )
 
     try:
         # Validar archivo MKV
@@ -471,12 +477,8 @@ def process_file(ctx: dict, config: dict, tool_paths: dict, translation_cache: T
             return
         logging.debug("Validaciones de ruta y archivo OK.")
 
-        # Inyectar contexto en config
-        config['SEASON_NUMBER'] = season_number
-        config['SERIES_TITLE'] = series_title
-        config['EPISODE_TITLE'] = episode_title
         logging.info("Procesando: Serie='%s', Temporada=%s, Episodio='%s'",
-                     series_title, season_number, episode_title)
+                     file_ctx.series_title, file_ctx.season_number, file_ctx.episode_title)
 
         # --- PASO 2: Obtener info detallada ---
         track_codecs = {}
@@ -519,10 +521,10 @@ def process_file(ctx: dict, config: dict, tool_paths: dict, translation_cache: T
         subs_tracks = []
         target_lang_found = False
         logging.info("Pistas encontradas:")
-        target_codes_set = config['TARGET_LANGUAGE_CODES_SET']
-        target_name_display = config['TARGET_LANGUAGE_NAME']
-        latino_kws = config['LATINO_KEYWORDS']
-        spain_kws = config['SPAIN_KEYWORDS']
+        target_codes_set = cfg.target_language_codes_set
+        target_name_display = cfg.target_language_name
+        latino_kws = cfg.latino_keywords
+        spain_kws = cfg.spain_keywords
         target_is_latino = any(kw in target_name_display.lower() for kw in latino_kws)
         target_is_spain = any(kw in target_name_display.lower() for kw in spain_kws)
 
@@ -568,15 +570,14 @@ def process_file(ctx: dict, config: dict, tool_paths: dict, translation_cache: T
                     target_lang_found = True
         
         if target_lang_found:
-            if config.get('REORDER_EXISTING_TRACKS', False):
+            if cfg.reorder_existing_tracks:
                 logging.info("Pista objetivo encontrada. Iniciando proceso de reordenamiento inteligente...")
                 # Generar capítulos antes de reordenar (si habilitado y MKV no tiene)
                 with tempfile.TemporaryDirectory(prefix="chap_reorder_") as chap_tmpdir:
                     chapter_file = _try_generate_chapters(
-                        series_title, mkv_path, mkv_info, config, Path(chap_tmpdir),
-                        season_number=config.get('SEASON_NUMBER')
+                        file_ctx, mkv_path, mkv_info, cfg, Path(chap_tmpdir)
                     )
-                    if mkv_info and reorder_tracks(mkv_path, mkv_info, config, tool_paths, chapter_file):
+                    if mkv_info and reorder_tracks(mkv_path, mkv_info, cfg, tool_paths, chapter_file):
                         logging.info("Reordenamiento finalizado con éxito.")
                     else:
                         if mkv_info is None:
@@ -586,18 +587,17 @@ def process_file(ctx: dict, config: dict, tool_paths: dict, translation_cache: T
                         # Si reorder falló pero tenemos capítulos, intentar embedding standalone
                         if chapter_file and chapter_file.exists() and mkv_info:
                             logging.info("[Chapters] Reorder falló, intentando embedding de capítulos standalone...")
-                            _embed_chapters_standalone(mkv_path, chapter_file, config, tool_paths)
+                            _embed_chapters_standalone(mkv_path, chapter_file, cfg, tool_paths)
                 return
             else:
                 # Pista existe pero reorder desactivado — aún intentar capítulos
-                if config.get('CHAPTERS_ENABLED') and config.get('OUTPUT_ACTION') == 'remux':
+                if file_ctx.chapters_enabled and cfg.output_action == 'remux':
                     with tempfile.TemporaryDirectory(prefix="chap_only_") as chap_tmpdir:
                         chapter_file = _try_generate_chapters(
-                            series_title, mkv_path, mkv_info, config, Path(chap_tmpdir),
-                            season_number=config.get('SEASON_NUMBER')
+                            file_ctx, mkv_path, mkv_info, cfg, Path(chap_tmpdir)
                         )
                         if chapter_file and chapter_file.exists():
-                            _embed_chapters_standalone(mkv_path, chapter_file, config, tool_paths)
+                            _embed_chapters_standalone(mkv_path, chapter_file, cfg, tool_paths)
                 logging.info("Pista objetivo ya existe y reordenamiento desactivado.")
                 return
         
@@ -609,7 +609,7 @@ def process_file(ctx: dict, config: dict, tool_paths: dict, translation_cache: T
         codecs_to_use = track_codecs if track_codecs else {
             getattr(t, 'track_id', '?'): getattr(t, 'codec_id', '?') for t in mkv.tracks
         }
-        src_track = select_subtitle_track(subs_tracks, codecs_to_use, config)
+        src_track = select_subtitle_track(subs_tracks, codecs_to_use, cfg)
         if not src_track:
             logging.warning("No hay pista fuente válida en %s", mkv_path.name)
             return
@@ -623,12 +623,7 @@ def process_file(ctx: dict, config: dict, tool_paths: dict, translation_cache: T
 
         # --- PASO 6: Configurar API ---
         try:
-            api_client = APIClient(
-                api_key=config['API_KEY'],
-                base_url=config['BASE_URL'],
-                model=config['MODEL'],
-                config=config
-            )
+            api_client = APIClient(cfg, file_ctx)
             logging.info("Conexión API OK.")
         except Exception as e:
             logging.exception("Error config/conexión API:")
@@ -639,8 +634,8 @@ def process_file(ctx: dict, config: dict, tool_paths: dict, translation_cache: T
         codec_n = source_codec_id or '?'
         logging.info("--- Iniciando Proceso ---")
         logging.info("Fuente: ID %s (Lang '%s', Codec '%s')", src_track_id, lang_n, codec_n)
-        logging.info("Traduciendo a: %s usando '%s'", config['TARGET_LANGUAGE_NAME'], api_client.current_model_name)
-        logging.info(f"Acción final: {config['OUTPUT_ACTION']}")
+        logging.info("Traduciendo a: %s usando '%s'", cfg.target_language_name, api_client.current_model_name)
+        logging.info(f"Acción final: {cfg.output_action}")
 
         # --- PASO 8-12: Procesamiento principal ---
         with tempfile.TemporaryDirectory(prefix="subtrans_") as tmpdir:
@@ -653,15 +648,13 @@ def process_file(ctx: dict, config: dict, tool_paths: dict, translation_cache: T
             try:
                 chapter_future = _chapter_executor.submit(
                     _try_generate_chapters,
-                    series_title, mkv_path, mkv_info, config, Path(tmpdir),
-                    season_number=config.get('SEASON_NUMBER')
+                    file_ctx, mkv_path, mkv_info, cfg, Path(tmpdir)
                 )
                 logging.info("[Chapters] Generación iniciada en hilo paralelo.")
             except Exception as e:
                 logging.warning("[Chapters] No se pudo iniciar hilo paralelo: %s. Ejecutando en hilo principal.", e)
                 chapter_file_path = _try_generate_chapters(
-                    series_title, mkv_path, mkv_info, config, Path(tmpdir),
-                    season_number=config.get('SEASON_NUMBER')
+                    file_ctx, mkv_path, mkv_info, cfg, Path(tmpdir)
                 )
             # --- 8. Extraer Sub Fuente ---
             t_extract = time.time()
@@ -696,11 +689,11 @@ def process_file(ctx: dict, config: dict, tool_paths: dict, translation_cache: T
             # --- Determinar formato salida y path temporal final ---
             output_format = 'ass' if subs.format == 'ass' else 'srt'
             output_sub_ext = '.' + output_format
-            translated_sub_base_name = mkv_path.stem + f".{config['PRIMARY_TARGET_CODE']}"
+            translated_sub_base_name = mkv_path.stem + f".{cfg.primary_target_code}"
             temp_sub_path_final = Path(tmpdir) / (translated_sub_base_name + output_sub_ext)
             logging.debug("Temp salida sub (%s): %s", output_format.upper(), temp_sub_path_final)
             # --- 10. Traducir ---
-            if config['ENABLE_TRANSLATION_CACHE']:
+            if cfg.enable_translation_cache:
                 logging.info("Caché HABILITADO.")
             lines_to_translate_original = []
             line_indices_map = {}
@@ -722,10 +715,10 @@ def process_file(ctx: dict, config: dict, tool_paths: dict, translation_cache: T
                 all_translated_results = api_client.translate_recursive_fallback(lines_to_translate_original, translation_cache)
             except Exception as e:
                 logging.error(f"Fallo crítico en traducción recursiva: {e}")
-                all_translated_results = ["[[ERROR_FATAL_TRADUCTOR]]"] * num_proc
+                all_translated_results = [make_error("ERROR_FATAL_TRADUCTOR")] * num_proc
 
             # --- Análisis Post-Traducción ---
-            validator = TranslationValidator(config)
+            validator = TranslationValidator(cfg)
             validation_results = validator.validate_all(lines_to_translate_original, all_translated_results)
             
             corrected_count = 0
@@ -740,7 +733,7 @@ def process_file(ctx: dict, config: dict, tool_paths: dict, translation_cache: T
             # --- Aplicar resultados finales a los subtítulos ---
             for i, final_translated_text in enumerate(all_translated_results):
                 original_subs_index = line_indices_map[i]
-                if not final_translated_text.startswith("[["): 
+                if not is_error_sentinel(final_translated_text):
                     subs[original_subs_index].text = final_translated_text.replace('\n','\\N')
                     stats['ok'] += 1
                 else: 
@@ -778,12 +771,12 @@ def process_file(ctx: dict, config: dict, tool_paths: dict, translation_cache: T
 
             # --- 12. Acción Final (CORREGIDO mkvmerge command) ---
             if saved_subtitle_temp_path and saved_subtitle_temp_path.exists():
-                output_action = config['OUTPUT_ACTION']
+                output_action = cfg.output_action
                 logging.info(f"--- Acción Final: {output_action} ---")
                 if output_action == 'remux':
                     if tool_paths and tool_paths.get('mkvmerge'):
-                        should_replace = config['REPLACE_ORIGINAL_MKV']
-                        mux_output_temp_path = mkv_path.with_suffix(mkv_path.suffix + ".muxing_temp") if should_replace else mkv_path.with_stem(mkv_path.stem + config['OUTPUT_MKV_SUFFIX'])
+                        should_replace = cfg.replace_original_mkv
+                        mux_output_temp_path = mkv_path.with_suffix(mkv_path.suffix + ".muxing_temp") if should_replace else mkv_path.with_stem(mkv_path.stem + cfg.output_mkv_suffix)
                         final_output_mkv_path = mkv_path if should_replace else mux_output_temp_path
                         logging.info(f"MKV Original: {mkv_path.name}, Sub: {saved_subtitle_temp_path.name}, MKV Final: {final_output_mkv_path.name}")
                         
@@ -806,9 +799,9 @@ def process_file(ctx: dict, config: dict, tool_paths: dict, translation_cache: T
                         mkvmerge_cmd_add.append(str(mkv_path))
                         # Opciones para Archivo 2 (SRT)
                         mkvmerge_cmd_add.extend([
-                            '--language', f"0:{config['PRIMARY_TARGET_CODE']}",
-                            '--track-name', f"0:{config['TRANSLATED_TRACK_NAME']}",
-                            '--default-track-flag', f"0:{'yes' if config['SET_NEW_SUB_DEFAULT'] else 'no'}",
+                            '--language', f"0:{cfg.primary_target_code}",
+                            '--track-name', f"0:{cfg.translated_track_name}",
+                            '--default-track-flag', f"0:{'yes' if cfg.set_new_sub_default else 'no'}",
                         ])
                         # Archivo 2 (SRT)
                         mkvmerge_cmd_add.append(str(saved_subtitle_temp_path))
@@ -862,7 +855,7 @@ def process_file(ctx: dict, config: dict, tool_paths: dict, translation_cache: T
                     pass
             # --- Limpieza Final ---
             logging.debug("Iniciando limpieza final...")
-            action_to_perform = config.get('OUTPUT_ACTION', 'remux')
+            action_to_perform = cfg.output_action
             if saved_subtitle_temp_path and saved_subtitle_temp_path.exists():
                 if action_to_perform == 'remux':
                     if final_action_successful:
@@ -901,9 +894,6 @@ def process_file(ctx: dict, config: dict, tool_paths: dict, translation_cache: T
         logging.warning(f"Ejecución abortada para {mkv_path.name}: {exit_msg}")
     except Exception as e:
         logging.exception(f"Error fatal no recuperado en {mkv_path.name}:")
-    finally:
-        # Restaurar configuración original
-        config['CHAPTERS_ENABLED'] = original_chapters_enabled
 
 def main():
 
@@ -920,17 +910,18 @@ def main():
     logging.debug(f"Ruta config.ini: {config_path}")
     
 
-    config_manager = ConfigManager(config_path)
-    config = config_manager.get_all()
+    cfg, config_warnings = load_config(config_path, capture_warnings=True)
+    if config_warnings:
+        logging.info("Avisos de configuración: %d (detalle en el log)", len(config_warnings))
 
     # Reconfigurar logging ahora que conocemos debug_translation
     # (el file handler sube a DEBUG y se activa la traza por etapa)
-    if config.get('DEBUG_TRANSLATION'):
+    if cfg.debug_translation:
         setup_logging(debug_mode=True)
         logging.info("Modo DEBUG_TRANSLATION activo: traza completa en el archivo de log.")
 
     # --- Auto-Updater ---
-    if config.get('AUTO_UPDATE', True):
+    if cfg.auto_update:
         try:
             import src.updater as updater
             updater.clean_old_files(script_dir)
@@ -939,16 +930,16 @@ def main():
             logging.warning(f"Error en auto-updater: {e}")
 
 
-    tool_paths = check_mkvtoolnix_tools(config)
-    if config['OUTPUT_ACTION'] == 'remux' and (not tool_paths or not tool_paths.get('mkvmerge') or not tool_paths.get('mkvextract')): sys.exit("MKVToolNix necesario para 'remux' no encontrado.")
+    tool_paths = check_mkvtoolnix_tools(cfg)
+    if cfg.output_action == 'remux' and (not tool_paths or not tool_paths.get('mkvmerge') or not tool_paths.get('mkvextract')): sys.exit("MKVToolNix necesario para 'remux' no encontrado.")
     elif not tool_paths or not tool_paths.get('mkvextract'): sys.exit("mkvextract necesario no encontrado.")
-    if config['API_KEY'] == "TU_API_KEY_AQUI": sys.exit("Clave API no configurada.")
+    if cfg.api_key == "TU_API_KEY_AQUI": sys.exit("Clave API no configurada.")
 
-    translation_cache = TranslationCache(config.get('ENABLE_TRANSLATION_CACHE', True))
+    translation_cache = TranslationCache(cfg.enable_translation_cache)
 
     def _sigterm_handler(signum, frame):
         logging.warning("SIGTERM recibido. Guardando caché antes de salir...")
-        if 'translation_cache' in locals() and config.get('ENABLE_TRANSLATION_CACHE'):
+        if 'translation_cache' in locals() and cfg.enable_translation_cache:
             translation_cache.save_cache()
         sys.exit(0)
     signal.signal(signal.SIGTERM, _sigterm_handler)
@@ -961,7 +952,7 @@ def main():
 
         for ctx_idx, ctx in enumerate(contexts):
             logging.info(f"--- Procesando archivo {ctx_idx + 1}/{len(contexts)} ---")
-            process_file(ctx, config, tool_paths, translation_cache)
+            process_file(ctx, cfg, tool_paths, translation_cache)
 
     except SystemExit as e:
         exit_msg = str(e) if str(e) not in ['None', '0'] else "Salida controlada."
@@ -969,17 +960,16 @@ def main():
     except Exception as e:
         logging.exception("Error fatal no recuperado:")
     finally:
-        if 'translation_cache' in locals() and config.get('ENABLE_TRANSLATION_CACHE'): translation_cache.save_cache()
+        if 'translation_cache' in locals() and cfg.enable_translation_cache: translation_cache.save_cache()
         else: logging.debug("No se guardó caché.")
 
         # Prune theme cache at the end of the batch
-        theme_cache_dir = config.get('CHAPTERS_THEME_CACHE_DIR')
-        if config.get('CHAPTERS_ENABLED') and theme_cache_dir and theme_cache_dir.exists():
+        if cfg.chapters_enabled and cfg.theme_cache_dir and cfg.theme_cache_dir.exists():
             from src.chapter_generator import prune_theme_cache
             prune_theme_cache(
-                theme_cache_dir, 
-                config.get('MAX_THEME_CACHE_MB', 1024), 
-                config.get('THEME_CACHE_TTL_DAYS', 120)
+                cfg.theme_cache_dir,
+                cfg.max_theme_cache_mb,
+                cfg.theme_cache_ttl_days
             )
     logging.info("--- Proceso Finalizado ---")
 

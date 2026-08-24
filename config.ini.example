@@ -3,6 +3,9 @@
 # 1. Copia este archivo como config.ini
 # 2. Rellena TUS valores reales (api_key, base_url, rutas, etc.)
 # 3. NO subas config.ini a Git (está en .gitignore)
+# 4. Las RUTAS son por máquina: si copias este archivo entre hosts
+#    (Windows <-> Linux/Sonarr), revisa mkvtoolnix_dir, theme_cache_dir y
+#    anime_path. El programa avisará en el log las rutas que no existan.
 
 [API]
 # Credenciales y endpoint universal (compatible OpenAI format)
@@ -28,11 +31,9 @@ batch_size = 50
 # Delay en segundos entre llamadas API (lotes o fallback individual)
 api_call_delay = 5.0
 
-# Máximo de reintentos para llamadas API fallidas (errores de red/servidor)
-api_max_retries = 3
-
-# Tiempo inicial de espera antes del primer reintento (segundos) - se duplicará en cada reintento
-api_retry_initial_delay = 20
+# NOTA: la escalera de reintentos es interna (3 intentos, base 2s con
+# backoff exponencial). Las antiguas claves api_max_retries /
+# api_retry_initial_delay ya no tienen efecto.
 
 # Timeout en segundos para llamadas API individuales (fallback)
 api_single_timeout = 120
@@ -43,26 +44,26 @@ api_batch_timeout = 300
 # Segundos a esperar si todos los modelos alcanzan rate limit (error 429)
 rate_limit_wait_seconds = 60
 
-# Máximo de reintentos globales (reinicio de modelos) antes de fallo fatal
-rate_limit_max_global_retries = 3
-
 # Temperatura de muestreo (0.0 = determinista, 1.0 = creativo)
 temperature = 0.3
 
 # Máximo de tokens en respuesta
 max_tokens = 2000
 
+# CONSEJO: con ASS muy taggeados (SubsPlus+ etc.) y lotes de 50, 2000 tokens
+# se corta (finish_reason=length). Usa 4000 o baja batch_size.
+
 # Habilitar caché de traducciones en memoria (reduce llamadas API si hay líneas repetidas)
 enable_translation_cache = yes
 
 [MKV_OUTPUT]
 # Rutas opcionales
-# Opcional: Descomenta y edita si MKVToolNix NO está en el PATH
-# mkvtoolnix_dir = C:\Program Files\MKVToolNix
+# Ruta a MKVToolNix si NO está en el PATH (vacío = usar PATH del sistema)
+mkvtoolnix_dir =
 
 # Configuración de salida MKV
-# ¿Intentar añadir el subtítulo traducido al MKV? (yes/no)
-add_subs_to_mkv = yes
+# NOTA: la acción real la define 'output_action' más abajo
+# (remux incrusta en el MKV; save_separate_sub guarda .srt aparte).
 
 # ¿Marcar la nueva pista de subtítulos como 'default'? (yes/no)
 set_new_sub_default = yes
@@ -109,13 +110,15 @@ required_sonarr_tag =
 batch_template =
     Contexto: Estás traduciendo el anime "{series_title}" - Episodio: "{episode_title}".
     Eres un traductor experto de subtítulos especializado en anime. Traduce las siguientes {batch_size_info} líneas de subtítulos al {target_language_name}, siguiendo estas reglas ESTRICTAMENTE:
-    1.  **Idioma y Tono**: Usa {target_language_name} natural y sin censura. No traduzcas si el texto ya está en español o si es irrelevante. Tuteo por defecto (voseo si aplica a la región).
+    1.  **Idioma y Tono**: Usa {target_language_name} natural y sin censura. No traduzcas si el texto ya está en español o si es irrelevante. Tuteo por defecto; voseo únicamente si el nombre del idioma lo indica explícitamente. Traduce SIEMPRE todo el texto: nunca devuelvas el original sin traducir.
     2.  **Preservación**: Mantén SIEMPRE intactos: Nombres propios, términos específicos (Oshiruko, Kunai, etc.), honoríficos japoneses (-san, -chan, -sama).
-    3.  **Formato de Entrada/Salida**: Cada línea viene numerada con el formato [N]: Texto.
+    3.  **Formato de Entrada/Salida**: Cada línea viene numerada como [N]: Texto. La numeración empieza en [1] —nunca en [0]— y el número va entre corchetes, sin negritas ni símbolos adicionales.
     4.  **DEBES responder manteniendo EXACTAMENTE el mismo formato: [N]: Traducción.**
     5.  **Placeholders**: Preserva etiquetas como __TAG0__, __TAG1__ EXACTAMENTE en su posición relativa.
     6.  **Ortografía y Puntuación**: Usa ortografía impecable. Incluye signos de apertura (¿, ¡), tildes correctas y la letra ñ. Evita modismos regionales excesivos a menos que sea necesario para el tono.
-    7.  **Consistencia**: Responde ÚNICAMENTE con las líneas traducidas numeradas. No agregues preámbulos ni explicaciones.
+    7.  **Consistencia**: Responde ÚNICAMENTE con las líneas traducidas numeradas. Sin preámbulos, sin frases de cierre ("Aquí tienes:", "Espero que ayude") y sin markdown alrededor del formato.
+    8.  **Horarios y números**: los números con dos puntos dentro del texto (p. ej. 21:45) se escriben tal cual; el prefijo [N]: aparece solo al inicio de cada línea.
+    9.  **Extensión**: mantén una longitud natural similar a la línea original cuando sea posible.
 
     Líneas a traducir:
     {batch_text}
@@ -125,18 +128,25 @@ batch_template =
 # Template para traducciones individuales (fallback).
 # Las líneas siguientes deben tener sangría.
 single_template =
-    Contexto: {series_title} - {episode_title}.
-    Eres un traductor experto de subtítulos especializado en anime. Traduce la siguiente línea al {target_language_name}:
-    
+    Contexto: Episodio "{episode_title}" de la serie "{series_title}".
+
+    Eres un traductor experto de subtítulos especializado en anime. Traduce la siguiente línea al {target_language_name} siguiendo estas reglas:
+
+    1.  **Idioma y Tono**: {target_language_name} natural y sin censura. Tuteo por defecto; voseo únicamente si el nombre del idioma lo indica explícitamente. Traduce SIEMPRE: nunca devuelvas el texto original sin traducir.
+    2.  **Preservación**: Mantén intactos los nombres propios, términos específicos y honoríficos japoneses (-san, -chan, -sama).
+    3.  **Placeholders**: Si el texto contiene etiquetas como __TAG0__, consérvalas EXACTAMENTE donde están.
+    4.  **Formato**: Devuelve ÚNICAMENTE la traducción —sin comillas que no estén en el original—, sin markdown, sin preámbulos ni explicaciones.
+    5.  **Extensión**: mantén una longitud natural similar a la línea original cuando sea posible.
+
     Texto original:
     {text}
-    
+
     Traducción:
 
 [CHAPTERS]
 # Generación automática de capítulos estilo anime (OP/ED)
-# Requiere: ffmpeg, scipy, numpy, requests, soundfile
-# Se instalan vía docker-mods al crear el contenedor
+# Requiere: ffmpeg + scipy/numpy/requests/soundfile (se auto-instalan
+# con pip en el primer intento si falta alguna)
 enabled = yes
 
 # Carpeta persistente para cachear temas descargados de animethemes.moe
@@ -164,6 +174,9 @@ silence_duration = 5.0
 # Factor de downsampling para correlación (mayor = más rápido, menos preciso)
 downsample_factor = 32
 
+# Porción del tema usada para la correlación (0-1]; maneja temas con fade-out/cortes
+theme_portion = 0.9
+
 # Ruta base para limitar generación de capítulos (solo Sonarr)
 # Solo se generarán capítulos para archivos dentro de esta ruta
 # Dejar vacío para generar capítulos para todas las series
@@ -174,7 +187,8 @@ anime_path = /home/biblioteca/Anime
 # respuestas crudas de la API por batch, decisiones del fallback recursivo
 # y restauración de placeholders. Para diagnosticar problemas de parsing.
 # false = desactivado, true = registra todas las etapas
-debug_translation = true
+# Recomendado: false — con true se vuelcan subtítulos completos al log.
+debug_translation = false
 
 # Máximo de caracteres a volcar por respuesta cruda de la API en modo debug.
 # 0 = desactiva el volcado crudo. Default: 800

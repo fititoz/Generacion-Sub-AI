@@ -12,7 +12,7 @@ import subprocess
 from pathlib import Path
 
 
-def reorder_tracks(mkv_path: Path, mkv_info: dict, config: dict, tool_paths: dict, chapter_file_path: Path | None = None) -> bool:
+def reorder_tracks(mkv_path: Path, mkv_info: dict, cfg, tool_paths: dict, chapter_file_path: Path | None = None) -> bool:
     """
     Reordena las pistas del MKV para priorizar Español Latino > Español España > Otros.
     Retorna True si se realizó el reordenamiento exitosamente.
@@ -31,8 +31,8 @@ def reorder_tracks(mkv_path: Path, mkv_info: dict, config: dict, tool_paths: dic
     sub_others = []
     other_tracks = [] # Kapitulos, tags, etc.
 
-    latino_kws = config['LATINO_KEYWORDS']
-    spain_kws = config['SPAIN_KEYWORDS']
+    latino_kws = cfg.latino_keywords
+    spain_kws = cfg.spain_keywords
     # Códigos que consideramos "Latino" por defecto si no hay info extra
     latino_codes = ['es-419', 'lat'] 
     generic_spanish_codes = ['spa', 'es']
@@ -142,7 +142,7 @@ def reorder_tracks(mkv_path: Path, mkv_info: dict, config: dict, tool_paths: dic
         proc_reorder = subprocess.run(cmd, check=True, capture_output=True, text=True, encoding='utf-8', errors='replace')
         
         # Reemplazar original
-        if config['REPLACE_ORIGINAL_MKV']:
+        if cfg.replace_original_mkv:
             logging.info("Reemplazando archivo original...")
             os.replace(temp_output, mkv_path)
             logging.info("¡Reordenamiento completado y archivo actualizado!")
