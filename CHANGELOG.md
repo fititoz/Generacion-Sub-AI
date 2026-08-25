@@ -3,6 +3,11 @@
 All notable changes to this project will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [Sin publicar]
+
+### Fixed
+- **Permission denied al arrancar tras auto-actualización**: los zipballs de GitHub no preservan bits Unix y el entry script aterrizaba sin `+x`. El updater ahora fuerza `0755` en `Generacion_Sub_AI.py` y preserva los modos previos del resto de archivos (auto-repara instalaciones rotas al actualizar).
+
 ## [2026.08.10] - 2026-08-25
 
 ### Added

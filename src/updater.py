@@ -1,4 +1,5 @@
 import os
+import stat
 import sys
 import json
 import urllib.request
@@ -61,8 +62,23 @@ def check_and_update(current_version: str, script_dir: Path) -> None:
                                 dst_file = script_dir / rel_path
                                 dst_file.parent.mkdir(parents=True, exist_ok=True)
 
+                                # Los zipballs de GitHub no preservan bits Unix:
+                                # sin esto el entry pierde +x y Sonarr no puede
+                                # ejecutarlo (Permission denied post-update).
+                                is_entry = (rel_path.parent == Path('.') and
+                                            rel_path.name == 'Generacion_Sub_AI.py')
+                                old_mode = (stat.S_IMODE(dst_file.stat().st_mode)
+                                            if dst_file.exists() else None)
+
+                                def _apply_mode():
+                                    if is_entry:
+                                        os.chmod(dst_file, 0o755)
+                                    elif old_mode is not None:
+                                        os.chmod(dst_file, old_mode)
+
                                 try:
                                     shutil.copy2(src_file, dst_file)
+                                    _apply_mode()
                                 except PermissionError:
                                     if dst_file.exists():
                                         # Truco para archivos bloqueados en Windows
@@ -73,6 +89,7 @@ def check_and_update(current_version: str, script_dir: Path) -> None:
                                             except: pass
                                         dst_file.rename(old_file)
                                         shutil.copy2(src_file, dst_file)
+                                        _apply_mode()
 
             logging.info("[Updater] Actualización aplicada con éxito. Reiniciando script...")
             os.execv(sys.executable, [sys.executable] + sys.argv)
