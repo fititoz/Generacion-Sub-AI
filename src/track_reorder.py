@@ -10,6 +10,7 @@ import logging
 import os
 import subprocess
 from pathlib import Path
+from src.remux import reorder_and_save
 
 
 def reorder_tracks(mkv_path: Path, mkv_info: dict, cfg, tool_paths: dict, chapter_file_path: Path | None = None) -> bool:
@@ -100,71 +101,35 @@ def reorder_tracks(mkv_path: Path, mkv_info: dict, cfg, tool_paths: dict, chapte
     logging.info(f"  España: {[t['id'] for t in sub_spain]}")
     logging.info(f"  Genérico: {[t['id'] for t in sub_generic_spanish]}")
 
-    # Archivos temporales
-    temp_output = mkv_path.with_suffix('.reorder_temp.mkv')
-    
-    cmd = [
-        tool_paths['mkvmerge'],
-        '-o', str(temp_output),
-        '--track-order', track_order_arg
-    ]
-    
-    # Configurar Flags: Default y Forced
-    # Lógica: 
+    # Flags: Default y Forced
+    # Lógica:
     # - Primera pista Latino -> Default=Yes
     # - Si no hay Latino, Primera España -> Default=Yes
     # - Si no hay España, Primera Genérica -> Default=Yes
     # - Resto -> Default=No
-    
     primary_sub = None
     if sub_latino: primary_sub = sub_latino[0]
     elif sub_spain: primary_sub = sub_spain[0]
     elif sub_generic_spanish: primary_sub = sub_generic_spanish[0]
     
-    # Procesar flags para TODOS los subs para asegurar limpieza
+    # Flags de default para todos los subs: latino/españa/genérico primero, resto no
+    default_flag_args = []
     all_subs = sub_latino + sub_spain + sub_generic_spanish + sub_others
     for sub in all_subs:
         sid = sub['id']
         is_default = (sub == primary_sub)
-        
-        # Resetear flags: --default-track-flag ID:bool --forced-display-flag ID:no
-        cmd.extend(['--default-track-flag', f"{sid}:{'yes' if is_default else 'no'}"])
-        # Opcional: Resetear forced a no para evitar confusiones, a menos que se quiera preservar
-        # cmd.extend(['--forced-display-flag', f"{sid}:no"]) 
+        default_flag_args += ['--default-track-flag', f"{sid}:{'yes' if is_default else 'no'}"]
 
-    # Insertar capítulos si se generaron
-    if chapter_file_path and chapter_file_path.exists():
-        cmd.extend(['--chapters', str(chapter_file_path)])
-        logging.info("[Chapters] Incluyendo capítulos en mkvmerge reorder: %s", chapter_file_path.name)
-    cmd.append(str(mkv_path))
+    result = reorder_and_save(mkv_path, track_order_arg, default_flag_args,
+                              cfg, tool_paths, chapters=chapter_file_path)
+    for warn_msg in result.warnings:
+        logging.warning("[Remux] %s", warn_msg)
 
-    try:
-        logging.info("Ejecutando mkvmerge para reordenar...")
-        # Loguear comando (ocultando rutas completas si es muy largo, pero aquí es útil ver todo)
-        cmd_debug = ' '.join(f'"{c}"' if ' ' in c else c for c in cmd)
-        logging.debug(f"Comando mkvmerge: {cmd_debug}")
-        
-        proc_reorder = subprocess.run(cmd, check=True, capture_output=True, text=True, encoding='utf-8', errors='replace')
-        
-        # Reemplazar original
+    if result.ok:
         if cfg.replace_original_mkv:
-            logging.info("Reemplazando archivo original...")
-            os.replace(temp_output, mkv_path)
             logging.info("¡Reordenamiento completado y archivo actualizado!")
         else:
-            final_name = mkv_path.with_stem(mkv_path.stem + ".reordered")
-            os.replace(temp_output, final_name)
-            logging.info(f"Guardado como: {final_name}")
-            
-        return True
-
-    except subprocess.CalledProcessError as e:
-        logging.error(f"Error en mkvmerge reorder (Exit Code {e.returncode}).")
-        logging.error(f"STDOUT:\n{e.stdout}")
-        logging.error(f"STDERR:\n{e.stderr}")
-        if temp_output.exists(): os.remove(temp_output)
-        return False
-    except Exception as e:
-        logging.error(f"Error inesperado reordenando: {e}")
-        if temp_output.exists(): os.remove(temp_output)
-        return False
+            logging.info(f"Reordenamiento guardado como: {result.output.name}")
+    else:
+        logging.error(f"Reordenamiento falló: {'; '.join(result.warnings) or 'desconocido'}")
+    return result.ok

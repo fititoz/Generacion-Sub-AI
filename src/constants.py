@@ -53,6 +53,18 @@ CHAPTER_PACKAGES = {
     "soundfile": "soundfile",
 }
 
+# Pisos mínimos probados (2026-08-23). El instalador runtime los usa como
+# 'paquete>=piso'; pip resuelve automáticamente la mayor compatible.
+PACKAGE_FLOORS = {
+    "openai": "3.3.1",
+    "pysubs2": "1.8.1",
+    "pymkv": "1.0.8",
+    "scipy": "1.17.1",
+    "numpy": "2.4.6",
+    "requests": "2.34.2",
+    "soundfile": "0.14.0",
+}
+
 # --- Chapter Generation Constants ---
 CHAPTER_NAMES = {
     'prologue': 'Prologue',

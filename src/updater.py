@@ -10,6 +10,7 @@ from pathlib import Path
 import logging
 
 def clean_old_files(script_dir: Path):
+    """Borra restos '.old' de actualizaciones previas junto al script."""
     for path in script_dir.rglob('*.old'):
         try:
             path.unlink()
@@ -18,6 +19,7 @@ def clean_old_files(script_dir: Path):
             logging.debug(f"No se pudo eliminar {path.name}: {e}")
 
 def check_and_update(current_version: str, script_dir: Path) -> None:
+    """Compara releases/latest con la versión local y aplica si es mayor."""
     logging.info("[Updater] Buscando actualizaciones en GitHub...")
     try:
         req = urllib.request.Request(

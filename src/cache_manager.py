@@ -14,7 +14,9 @@ from src.constants import CACHE_DIR_NAME, CACHE_FILE_NAME
 from src.protocol import contains_placeholder
 
 class TranslationCache:
+    """Caché original->traducido persistida en JSON con poda por tamaño."""
     def __init__(self, enable_cache: bool, max_entries: int = 10000):
+        """enable_cache=False deja la instancia operativa pero sin persistir."""
         self.enable_cache = enable_cache
         self.max_entries = max_entries
         self.cache = {}
@@ -24,11 +26,13 @@ class TranslationCache:
             logging.info("Caché DESHABILITADO.")
 
     def _get_cache_path(self):
+        """Ruta estable junto al script (independiente del CWD)."""
         script_dir = Path(__file__).parent.parent
         cache_dir = script_dir / CACHE_DIR_NAME
         return cache_dir / CACHE_FILE_NAME
 
     def _load_cache(self):
+        """Carga el JSON si existe; corrupto -> reset silencioso (auto-reparación)."""
         cache_file_path = self._get_cache_path()
         if cache_file_path.exists():
             logging.info(f"Cargando caché: {cache_file_path}")
@@ -42,6 +46,7 @@ class TranslationCache:
             logging.info("Archivo caché no encontrado.")
 
     def save_cache(self):
+        """Persistencia atómica-ish: escribe y mueve al destino final."""
         if not self.enable_cache:
             logging.debug("Guardado caché deshabilitado.");
             return
@@ -61,6 +66,7 @@ class TranslationCache:
             logging.exception(f"Error guardando caché en '{cache_file_path}'.")
 
     def get(self, key):
+        """Lectura directa del dict en memoria."""
         return self.cache.get(key)
 
     def delete(self, key):
@@ -68,6 +74,7 @@ class TranslationCache:
         self.cache.pop(key, None)
 
     def set(self, key, value):
+        """Inserta respetando guard de placeholders y poda por max_entries."""
         if self.enable_cache:
             # Guardia: no cachear texto con placeholders sin restaurar.
             # Rechaza de verdad (antes solo logueaba y guardaba igual).
@@ -90,4 +97,5 @@ class TranslationCache:
                      f"Tamaño actual: {len(self.cache)}")
 
     def __contains__(self, key):
+        """Soporte del operador 'in' para chequeos de hit antes de traducir."""
         return key in self.cache

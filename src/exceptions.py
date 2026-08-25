@@ -19,6 +19,7 @@ class APIResponseError(SubtitleTranslationError):
 class LineCountMismatchError(APIResponseError):
     """Number of translated lines does not match expected count."""
     def __init__(self, expected: int, received: int, missing_indices: list[int] | None = None):
+        """Guarda el detalle esperado vs recibido para diagnóstico."""
         self.expected = expected
         self.received = received
         self.missing_indices = missing_indices or []
@@ -27,6 +28,7 @@ class LineCountMismatchError(APIResponseError):
 class ContentBlockedError(APIResponseError):
     """Content blocked by safety filters."""
     def __init__(self, reason: str):
+        """Guarda el motivo del bloqueo reportado por el proveedor."""
         self.reason = reason
         super().__init__(f"Content blocked: {reason}")
 

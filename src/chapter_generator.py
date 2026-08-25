@@ -409,6 +409,7 @@ def prune_theme_cache(cache_dir: Path, max_mb: int, ttl_days: int) -> None:
 
         # Fase 2: Limpieza por Tamaño Máximo
         def get_dir_size(path: Path) -> int:
+            """Tamaño recursivo de un directorio en bytes (archivos regulares)."""
             return sum(f.stat().st_size for f in path.glob('**/*') if f.is_file())
 
         total_size_bytes = sum(f.stat().st_size for f in cache_dir.glob('**/*') if f.is_file())

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Script Version: 2026.08.6
+# Version: ver src/__version__.py (fuente única de verdad)
 """
 Generacion_Sub_AI — MKV subtitle translator with anime chapter generation.
 
@@ -40,15 +40,18 @@ if 'pkg_resources' not in sys.modules:
     _pkg_resources = _types.ModuleType('pkg_resources')
     _pkg_resources.__package__ = 'pkg_resources'
     class _DistributionNotFound(Exception):
+        """Excepción shim compatible con pkg_resources.DistributionNotFound."""
         pass
     _pkg_resources.DistributionNotFound = _DistributionNotFound
     def _get_distribution(name):
+        """Resuelve la distribución instalada o levanta el shim anterior."""
         try:
             return importlib.metadata.distribution(name)
         except importlib.metadata.PackageNotFoundError:
             raise _DistributionNotFound(name)
     _pkg_resources.get_distribution = _get_distribution
     def _resource_filename(package_name, resource_path):
+        """Equivalente minimalista de resource_filename para setuptools>=82."""
         return str(importlib.resources.files(package_name).joinpath(resource_path))
     _pkg_resources.resource_filename = _resource_filename
     sys.modules['pkg_resources'] = _pkg_resources
@@ -82,9 +85,12 @@ from src.translation_validator import TranslationValidator, TranslationCorrector
 from src.exceptions import SubtitleTranslationError, MKVOperationError, SubtitleParsingError
 from src.chapter_generator import generate_chapters
 from src.track_reorder import reorder_tracks
+from src.remux import embed_chapters as _remux_embed_chapters, embed_translation
+from src import phases
 
 # --- Funciones Auxiliares ---
 def find_executable(name, provided_path=None):
+    """Localiza un binario: ruta provista (mkvtoolnix_dir) o PATH del sistema."""
     exec_name = name if os.name != 'nt' else f"{name}.exe"
     if provided_path:
         path_obj = Path(provided_path)
@@ -97,6 +103,7 @@ def find_executable(name, provided_path=None):
     logging.debug("No se encontró '%s'", name)
     return None
 def check_mkvtoolnix_tools(cfg):
+    """Verifica mkvextract/mkvmerge según la acción de salida. -> dict tools|None."""
     mkvtoolnix_dir = cfg.mkvtoolnix_dir
     mkvmerge_path = None
     mkvextract_path = None
@@ -131,6 +138,7 @@ def check_mkvtoolnix_tools(cfg):
     logging.debug(f"MKVToolNix check OK. Encontrado: {list(found_tools.keys())}")
     return found_tools
 def select_subtitle_track(tracks, track_codecs, cfg):
+    """Selecciona la pista fuente traducible aplicando preferencia e idioma objetivo."""
     candidates = []
     image_subs_found = []
     preferred_lang = cfg.preferred_source_lang
@@ -183,6 +191,7 @@ def select_subtitle_track(tracks, track_codecs, cfg):
     logging.info("Selección: Primera disponible ID %s (Lang '%s', Codec '%s').", tid, lang, codec)
     return first
 def get_subtitle_extension(codec_id):
+    """Mapea codec_id MKV a extensión de subtítulo ('.srt'/'.ass'/'.sub'/'.sup')."""
     if not codec_id or codec_id == '?':
         logging.warning("Codec ID no disponible ('%s'), asumiendo '.srt'.", codec_id)
         return '.srt'
@@ -257,29 +266,18 @@ def _embed_chapters_standalone(mkv_path: Path, chapter_file: Path, cfg, tool_pat
     if not tool_paths or not tool_paths.get('mkvmerge'):
         logging.warning("[Chapters] mkvmerge no disponible para embedding standalone.")
         return False
-    temp_chap_out = mkv_path.with_suffix('.chapters_temp.mkv')
-    try:
-        chap_cmd = [
-            tool_paths['mkvmerge'],
-            '-o', str(temp_chap_out),
-            '--chapters', str(chapter_file),
-            str(mkv_path),
-        ]
-        subprocess.run(chap_cmd, check=True, capture_output=True, text=True,
-                        encoding='utf-8', errors='replace', timeout=300)
+    result = _remux_embed_chapters(mkv_path, chapter_file, cfg, tool_paths)
+    for warn_msg in result.warnings:
+        logging.warning("[Remux] %s", warn_msg)
+    if result.ok:
         if cfg.replace_original_mkv:
-            os.replace(temp_chap_out, mkv_path)
             logging.info("[Chapters] Capítulos embebidos exitosamente (standalone).")
         else:
-            final_name = mkv_path.with_stem(mkv_path.stem + ".chapters")
-            os.replace(temp_chap_out, final_name)
-            logging.info("[Chapters] Guardado con capítulos como: %s", final_name.name)
-        return True
-    except Exception as e:
-        logging.warning("[Chapters] Error embedding capítulos standalone: %s", e)
-        if temp_chap_out.exists():
-            os.remove(temp_chap_out)
-        return False
+            logging.info("[Chapters] Guardado con capítulos como: %s", result.output.name)
+    else:
+        logging.warning("[Chapters] Error embedding capítulos standalone: %s",
+                        '; '.join(result.warnings) or 'desconocido')
+    return result.ok
 
 def _detect_mode() -> str:
     """
@@ -483,95 +481,14 @@ def process_file(ctx: dict, cfg, tool_paths: dict, translation_cache: Translatio
         logging.info("Procesando: Serie='%s', Temporada=%s, Episodio='%s'",
                      file_ctx.series_title, file_ctx.season_number, file_ctx.episode_title)
 
-        # --- PASO 2: Obtener info detallada ---
-        track_codecs = {}
-        mkv_info = None
-        if tool_paths and tool_paths.get('mkvmerge'):
-            try:
-                logging.debug("Obteniendo info detallada (mkvmerge -J)...")
-                mkvmerge_cmd = [tool_paths['mkvmerge'], '-J', str(mkv_path)]
-                result = subprocess.run(mkvmerge_cmd, capture_output=True, text=True, check=True, encoding='utf-8', errors='replace', timeout=60)
-                mkv_info = json.loads(result.stdout)
-                logging.debug("JSON parseado.")
-                if 'tracks' in mkv_info:
-                    for track_data in mkv_info['tracks']:
-                        tid = track_data.get('id')
-                        props = track_data.get('properties', {})
-                        codec_id = props.get('codec_id')
-                        if tid is not None and codec_id:
-                            track_codecs[tid] = codec_id
-                            logging.debug("  -> ID %d: Codec '%s'.", tid, codec_id)
-            except subprocess.TimeoutExpired:
-                logging.warning("Timeout obteniendo info detallada.")
-            except subprocess.CalledProcessError as e: logging.warning(f"mkvmerge -J falló (código {e.returncode}): {e.stderr or e.stdout or 'Sin salida'}")
-            except json.JSONDecodeError as e: logging.warning(f"Error decodificando JSON: {e}"); logging.debug("Output mkvmerge:\n%s", result.stdout if 'result' in locals() else "N/A")
-            except Exception as e: logging.warning(f"Fallo inesperado info detallada: {e}", exc_info=False)
-        else: logging.info("mkvmerge no disponible.")
+        mkv_info, track_codecs = phases.probe_mkv_info(mkv_path, tool_paths)
 
-        # --- PASO 3: Análisis pymkv ---
-        logging.debug("Analizando estructura pymkv: %s...", mkv_path.name)
-        try:
-            mkv = MKVFile(str(mkv_path))
-            if tool_paths and tool_paths.get('mkvmerge'):
-                try:
-                    mkv.mkvmerge_path = tool_paths['mkvmerge']
-                except Exception as e_assign:
-                    logging.warning(f"No se pudo asignar mkvmerge_path a pymkv: {e_assign}")
-            logging.debug("Análisis pymkv OK.")
-        except Exception as e: logging.exception("Error fatal análisis pymkv:"); return
+        mkv = phases.load_mkv_structure(mkv_path, tool_paths)
+        if mkv is None:
+            return
 
-        # --- PASO 4: Comprobar pista objetivo ---
-        subs_tracks = []
-        target_lang_found = False
-        logging.info("Pistas encontradas:")
-        target_codes_set = cfg.target_language_codes_set
-        target_name_display = cfg.target_language_name
-        latino_kws = cfg.latino_keywords
-        spain_kws = cfg.spain_keywords
-        target_is_latino = any(kw in target_name_display.lower() for kw in latino_kws)
-        target_is_spain = any(kw in target_name_display.lower() for kw in spain_kws)
+        subs_tracks, target_lang_found = phases.scan_tracks_for_target(mkv, cfg)
 
-        for i, track in enumerate(mkv.tracks):
-            tid = getattr(track, 'track_id', '?')
-            ttype = getattr(track, 'track_type', '?')
-            lang = getattr(track, 'language', 'und')
-            codec_id = getattr(track, 'codec_id', '?')
-            name = getattr(track, 'track_name', '?')
-            default = getattr(track, 'default_track', False)
-            forced = getattr(track, 'forced_track', False)
-
-            codec = track_codecs.get(tid, getattr(track, 'codec_id', '?'))
-            lang = lang if lang else 'und'
-            track_name_lower = (name or '').lower()
-
-            name_part = f", N='{name}'" if name else ""
-            details = (
-                f"  - Pista {i}: ID={tid}, T='{ttype}', L='{lang}', C='{codec}'"
-                f"{name_part}"
-                f"{' (Def)' if default else ''}"
-                f"{' (Forz)' if forced else ''}"
-            )
-            logging.info(details)
-
-            if ttype == 'subtitles':
-                subs_tracks.append(track)
-                is_target_variant = False
-                if lang in target_codes_set:
-                    is_target_variant = True
-                    logging.info(f" --> Coincide código idioma ({lang}).")
-                elif lang in ['spa', 'es'] and (target_is_latino or target_is_spain):
-                    track_is_latino = any(kw in track_name_lower for kw in latino_kws)
-                    track_is_spain = any(kw in track_name_lower for kw in spain_kws)
-                    if target_is_latino and track_is_latino:
-                        is_target_variant = True
-                        logging.info(f" -> Coincide variante Latino ('{name}').")
-                    elif target_is_spain and track_is_spain:
-                        is_target_variant = True
-                        logging.info(f" -> Coincide variante España ('{name}').")
-                if is_target_variant:
-                    logging.info(" --> ¡Encontrada pista objetivo!")
-                    target_lang_found = True
-        
         if target_lang_found:
             if cfg.reorder_existing_tracks:
                 logging.info("Pista objetivo encontrada. Iniciando proceso de reordenamiento inteligente...")
@@ -659,38 +576,10 @@ def process_file(ctx: dict, cfg, tool_paths: dict, translation_cache: Translatio
                 chapter_file_path = _try_generate_chapters(
                     file_ctx, mkv_path, mkv_info, cfg, Path(tmpdir)
                 )
-            # --- 8. Extraer Sub Fuente ---
-            t_extract = time.time()
-            source_sub_ext = get_subtitle_extension(source_codec_id)
-            tmp_sub_extracted = Path(tmpdir) / f"track_{src_track_id}_source{source_sub_ext}"
-            cmd_extract = [tool_paths['mkvextract'], str(mkv_path), 'tracks', f'{src_track_id}:{str(tmp_sub_extracted)}']
-            logging.debug("Ejecutando mkvextract...")
-            try:
-                proc_extract = subprocess.run(cmd_extract, check=True, capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=180)
-                logging.info("Extracción OK (%.1fs).", time.time() - t_extract)
-            except Exception as e:
-                logging.exception("Fallo extracción mkvextract")
-                raise
-            if not tmp_sub_extracted.exists() or tmp_sub_extracted.stat().st_size == 0:
-                raise Exception("Extracted file empty/missing")
-            # --- 9. Cargar Subs ---
-            loaded = False
-            subs = None
-            best_enc = 'utf-8'
-            encs = ['utf-8', 'utf-8-sig', 'utf-16', 'latin-1', 'cp1252']
-            for enc in encs:
-                 try:
-                     subs = pysubs2.load(str(tmp_sub_extracted), encoding=enc)
-                     best_enc = enc
-                     logging.info("Cargado OK (enc '%s', fmt '%s').", enc, subs.format)
-                     loaded = True
-                     break
-                 except Exception:
-                     pass
-            if not loaded or subs is None:
-                raise Exception("Subtitle load failed")
-            # --- Determinar formato salida y path temporal final ---
-            output_format = 'ass' if subs.format == 'ass' else 'srt'
+            tmp_sub_extracted = phases.extract_source_subtitle(
+                mkv_path, src_track_id,
+                get_subtitle_extension(source_codec_id), Path(tmpdir), tool_paths)
+            subs, output_format = phases.load_subtitles(tmp_sub_extracted)
             output_sub_ext = '.' + output_format
             translated_sub_base_name = mkv_path.stem + f".{cfg.primary_target_code}"
             temp_sub_path_final = Path(tmpdir) / (translated_sub_base_name + output_sub_ext)
@@ -698,14 +587,8 @@ def process_file(ctx: dict, cfg, tool_paths: dict, translation_cache: Translatio
             # --- 10. Traducir ---
             if cfg.enable_translation_cache:
                 logging.info("Caché HABILITADO.")
-            lines_to_translate_original = []
-            line_indices_map = {}
-            original_subs_indices = []
-            for i, line in enumerate(subs):
-                if not line.is_comment and line.text.strip():
-                    line_indices_map[len(lines_to_translate_original)] = i
-                    lines_to_translate_original.append(line.text)
-                    original_subs_indices.append(i)
+            lines_to_translate_original, line_indices_map, _originals_idx = \
+                phases.collect_translatable(subs)
             num_proc = len(lines_to_translate_original)
             if num_proc == 0:
                 logging.warning("Subtítulo sin texto traducible en %s", mkv_path.name)
@@ -713,12 +596,9 @@ def process_file(ctx: dict, cfg, tool_paths: dict, translation_cache: Translatio
             logging.info("--- Traducción (%d líneas válidas, con fallback recursivo) ---", num_proc)
             t_start = time.time()
             
-            stats = {'ok':0, 'errors': 0, 'processed': num_proc}
-            try:
-                all_translated_results = api_client.translate_recursive_fallback(lines_to_translate_original, translation_cache)
-            except Exception as e:
-                logging.error(f"Fallo crítico en traducción recursiva: {e}")
-                all_translated_results = [make_error("ERROR_FATAL_TRADUCTOR")] * num_proc
+            stats = {'ok': 0, 'errors': 0, 'processed': num_proc}
+            all_translated_results = phases.translate_lines(
+                api_client, translation_cache, lines_to_translate_original)
 
             # --- Análisis Post-Traducción ---
             validator = TranslationValidator(cfg)
@@ -734,14 +614,8 @@ def process_file(ctx: dict, cfg, tool_paths: dict, translation_cache: Translatio
                 logging.info("Análisis completado: ¡No se detectaron problemas!")
 
             # --- Aplicar resultados finales a los subtítulos ---
-            for i, final_translated_text in enumerate(all_translated_results):
-                original_subs_index = line_indices_map[i]
-                if not is_error_sentinel(final_translated_text):
-                    subs[original_subs_index].text = final_translated_text.replace('\n','\\N')
-                    stats['ok'] += 1
-                else: 
-                    stats['errors'] += 1
-                    logging.warning("Error persistente línea [%d]: %s", original_subs_index, final_translated_text)
+            stats.update(phases.apply_results(subs, line_indices_map,
+                                              all_translated_results))
 
             t_end = time.time()
             logging.info("--- Resumen Traducción: %d líneas en %.1fs | OK=%d | Errores=%d | Corregidas=%d/%d con issues ---",
@@ -772,75 +646,29 @@ def process_file(ctx: dict, cfg, tool_paths: dict, translation_cache: Translatio
             else:
                 logging.warning("No se guardó sub temp (0 OK).")
 
-            # --- 12. Acción Final (CORREGIDO mkvmerge command) ---
+            # --- 12. Acción Final (remux vía src/remux.py) ---
             if saved_subtitle_temp_path and saved_subtitle_temp_path.exists():
                 output_action = cfg.output_action
                 logging.info(f"--- Acción Final: {output_action} ---")
                 if output_action == 'remux':
                     if tool_paths and tool_paths.get('mkvmerge'):
-                        should_replace = cfg.replace_original_mkv
-                        mux_output_temp_path = mkv_path.with_suffix(mkv_path.suffix + ".muxing_temp") if should_replace else mkv_path.with_stem(mkv_path.stem + cfg.output_mkv_suffix)
-                        final_output_mkv_path = mkv_path if should_replace else mux_output_temp_path
-                        logging.info(f"MKV Original: {mkv_path.name}, Sub: {saved_subtitle_temp_path.name}, MKV Final: {final_output_mkv_path.name}")
-                        
-                        if mux_output_temp_path.exists():
-                            logging.warning(f"Eliminando existente: {mux_output_temp_path.name}")
-                            os.remove(mux_output_temp_path)
-                        if should_replace and not mkv_path.exists():
-                            raise Exception("Original MKV no encontrado para reemplazo")
-                        
-                        # --- Comando mkvmerge CORREGIDO ---
-                        mkvmerge_cmd_add = [
-                            tool_paths['mkvmerge'],
-                            '-o', str(mux_output_temp_path), # Salida
-                        ]
-                        # Insertar --chapters ANTES del MKV de entrada (si se generaron capítulos)
-                        if chapter_file_path and chapter_file_path.exists():
-                            mkvmerge_cmd_add.extend(['--chapters', str(chapter_file_path)])
-                            logging.info("[Chapters] Incluyendo capítulos en mkvmerge: %s", chapter_file_path.name)
-                        # Archivo 1 (MKV original)
-                        mkvmerge_cmd_add.append(str(mkv_path))
-                        # Opciones para Archivo 2 (SRT)
-                        mkvmerge_cmd_add.extend([
-                            '--language', f"0:{cfg.primary_target_code}",
-                            '--track-name', f"0:{cfg.translated_track_name}",
-                            '--default-track-flag', f"0:{'yes' if cfg.set_new_sub_default else 'no'}",
-                        ])
-                        # Archivo 2 (SRT)
-                        mkvmerge_cmd_add.append(str(saved_subtitle_temp_path))
-                        # --- Fin Comando mkvmerge CORREGIDO ---
-                        try:
-                            t_mux = time.time()
-                            logging.debug("Cmd: %s", ' '.join(shlex.quote(str(p)) for p in mkvmerge_cmd_add))
-                            proc_add = subprocess.run(mkvmerge_cmd_add, check=True, capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=600)
-                            logging.info("Muxing OK -> %s (%.1fs)", mux_output_temp_path.name, time.time() - t_mux)
-                            final_action_successful = True
-                        except Exception as e:
-                            logging.exception("Error muxing")
-                            final_action_successful = False
-                        
-                        if should_replace and final_action_successful:
-                             try:
-                                 logging.info(f"Reemplazando '{mkv_path.name}'...")
-                                 shutil.move(str(mux_output_temp_path), str(mkv_path))
-                                 logging.info("Reemplazo OK!")
-                             except Exception as e:
-                                 logging.exception(f"ERROR FATAL reemplazo! Muxed en {mux_output_temp_path}")
-                                 final_action_successful = False
-                        elif should_replace and not final_action_successful:
-                             if mux_output_temp_path.exists():
-                                try:
-                                    os.remove(mux_output_temp_path)
-                                    logging.info("Temp mux fallido eliminado.")
-                                except Exception as e_remove:
-                                    logging.warning(f"No se pudo eliminar temp mux fallido {mux_output_temp_path}: {e_remove}")
+                        logging.info(f"MKV Original: {mkv_path.name}, Sub: {saved_subtitle_temp_path.name}")
+                        result = embed_translation(
+                            mkv_path, saved_subtitle_temp_path, cfg, tool_paths,
+                            chapters=chapter_file_path,
+                        )
+                        for warn_msg in result.warnings:
+                            logging.warning("[Remux] %s", warn_msg)
+                        final_action_successful = result.ok
+                        if result.ok:
+                            logging.info("Muxing OK -> %s", result.output.name)
                     else:
                         logging.error("mkvmerge no encontrado para 'remux'.")
                 elif output_action == 'save_separate_sub':
                     final_action_successful = True
             elif not saved_subtitle_temp_path:
                 logging.warning("No se generó sub temp, no hay acción final.")
-            # --- FIN Acción Final (CORREGIDO mkvmerge command) ---
+            # --- FIN Acción Final ---
 
           except SystemExit as e:
               exit_msg = str(e) if str(e) not in ['None', '0'] else "Salida controlada."
@@ -900,6 +728,7 @@ def process_file(ctx: dict, cfg, tool_paths: dict, translation_cache: Translatio
 
 def main():
 
+    """Punto de entrada: config, updater, herramientas y bucle de contextos."""
     setup_logging()
     from src.__version__ import __version__ as script_version
     
@@ -941,6 +770,7 @@ def main():
     translation_cache = TranslationCache(cfg.enable_translation_cache)
 
     def _sigterm_handler(signum, frame):
+        """Guarda la caché y re-envía SIGTERM con handler default (muere de verdad)."""
         logging.warning("SIGTERM recibido. Guardando caché antes de salir...")
         try:
             translation_cache.save_cache()

@@ -68,7 +68,7 @@ while [ $# -gt 0 ]; do
     *) if [ -n "$CAPTURE" ]; then printf '%s\\n' "$1" >> "$CAPTURE"; fi; shift ;;
   esac
 done
-[ -n "$out" ] && : > "$out"
+[ -n "$out" ] && printf "MKV0" > "$out"
 exit 0
 """
 

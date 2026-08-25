@@ -31,3 +31,6 @@ audit/
 plan-evidence/
 docs/
 AGENTS.md
+
+# Pytest
+.pytest_cache/

@@ -39,6 +39,7 @@ class APIClient:
     """Cliente universal para APIs compatibles con OpenAI (base_url + api_key)."""
 
     def __init__(self, cfg, file_ctx):
+        """Inicializa cliente OpenAI (max_retries=0: el reintento lo maneja _call_api)."""
         self.cfg = cfg
         self.api_key = cfg.api_key
         self.base_url = cfg.base_url
@@ -52,6 +53,7 @@ class APIClient:
         self._configure_client()
 
     def _dbg(self, stage: str, message: str):
+        """Log DEBUG condicionado a debug_translation."""
         if self._debug:
             logging.info("[DEBUG][%s] %s", stage, message)
 
@@ -71,6 +73,7 @@ class APIClient:
 
     @property
     def current_model_name(self) -> str:
+        """Nombre del modelo activo (usado en logs del orquestador)."""
         return self.model
 
     def _configure_client(self):

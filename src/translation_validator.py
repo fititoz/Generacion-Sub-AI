@@ -13,6 +13,7 @@ from src.protocol import NUMBERED_ARTIFACT_RE, is_error_sentinel
 
 @dataclass
 class ValidationResult:
+    """Resultado por línea: issues detectados, severidad y corrección opcional."""
     line_index: int
     original: str
     translated: str
@@ -21,12 +22,15 @@ class ValidationResult:
     severity: str = 'info' # 'info', 'warning', 'error'
 
 class TranslationValidator:
+    """Analizador de calidad post-traducción sobre pares original/traducido."""
     def __init__(self, cfg):
+        """cfg solo aporta el flag debug_translation para dumps detallados."""
         self.cfg = cfg
         # Modo debug: registra original + traducción de cada línea para diagnóstico
         self.debug_translation = cfg.debug_translation
 
     def validate_all(self, originals: list[str], translations: list[str]) -> list[ValidationResult]:
+        """Ejecuta todas las reglas R1-R9 + guardia G0. -> list[ValidationResult]."""
         if len(originals) != len(translations):
             logging.error(f"Validator mismatch: originals={len(originals)}, translations={len(translations)}")
             return []
@@ -124,14 +128,16 @@ class TranslationValidator:
         return results
 
 class TranslationCorrector:
+    """Re-traductor de líneas críticas vía mini-batch + fallback individual."""
     def __init__(self, api_client, cache_manager):
+        """api_client ejecuta; cache se invalida/persiste alrededor de la corrección."""
         self.api_client = api_client
         self.cache = cache_manager
 
     def attempt_corrections(self, validation_results: list[ValidationResult], all_translations: list[str]) -> list[str]:
         """
         Intenta corregir resultados con problemas mediante re-traducción.
-        NUEVO: Agrupa líneas con error crítico en un mini-batch numerado para 1 sola llamada API.
+        Agrupa las líneas críticas en un mini-batch numerado: 1 llamada API en vez de N.
         Fallback a translate_single solo para líneas que fallen en el batch.
         """
         issues_count = len(validation_results)

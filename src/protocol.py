@@ -85,6 +85,7 @@ def error_sentinel_kind(text: str) -> str | None:
 
 
 def is_error_sentinel(text: str) -> bool:
+    """True sii el texto es un sentinela [[KIND…]] con KIND registrado."""
     return error_sentinel_kind(text) is not None
 
 

@@ -1,14 +1,16 @@
 # --- Core: traduccion de subtitulos (siempre requerido) ---
-openai
-pysubs2
-pymkv
+# Pisos = ultimas versiones verificadas al 2026-08-23 (pip resuelve la mayor
+# compatible si el Python del host es mas viejo).
+openai>=3.3.1
+pysubs2>=1.8.1
+pymkv>=1.0.8
 
-# --- Opcional: generacion de capitulos ([CHAPTERS] enabled = true) ---
+# --- Opcional: generacion de capitulos ([CHAPTERS] enabled = yes) ---
 # Importados de forma diferida solo si la feature esta activa.
-numpy
-scipy
-requests
-soundfile
+numpy>=2.4.6
+scipy>=1.17.1
+requests>=2.34.2
+soundfile>=0.14.0
 
 # tkinter no se instala via pip:
 #   - Windows/macOS: incluido con el instalador oficial de Python

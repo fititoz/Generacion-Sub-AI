@@ -55,22 +55,32 @@ DEFAULT_SINGLE_PROMPT = '''Contexto: Episodio "{episode_title}" de la serie "{se
 
 # --- Coerciones ---
 
-def _as_str(v): return v
+def _as_str(v):
+    """Coerción identidad (str)."""
+    return v
 
-def _as_int(v): return int(v)
 
-def _as_float(v): return float(v)
+def _as_int(v):
+    """Coerción a int (ValueError si no es numérico)."""
+    return int(v)
+
+
+def _as_float(v):
+    """Coerción a float (ValueError si no es numérico)."""
+    return float(v)
 
 _TRUE = {'yes', 'true', 'on', '1'}
 _FALSE = {'no', 'false', 'off', '0'}
 
 def _as_bool(v):
+    """yes/no/true/false/on/off/1/0 -> bool; otro valor -> ValueError."""
     s = str(v).strip().lower()
     if s in _TRUE: return True
     if s in _FALSE: return False
     raise ValueError(f"valor booleano no reconocido: {v!r}")
 
 def _as_action(v):
+    """Normaliza y valida la acción de salida contra la lista permitida."""
     s = v.strip().lower()
     if s not in ('remux', 'save_separate_sub'):
         logging.warning("output_action inválido '%s'. Usando 'save_separate_sub'.", s)
@@ -78,17 +88,21 @@ def _as_action(v):
     return s
 
 def _as_path_opt(v):
+    """str recortado -> Path|None (vacío = None)."""
     s = v.strip()
     return Path(s) if s else None
 
 def _as_csv_tuple(v):
+    """CSV -> tupla de códigos en minúsculas (default ['spa'] si vacío)."""
     items = [c.strip().lower() for c in v.split(',') if c.strip()]
     return tuple(items) or ('spa',)
 
 def _as_csv_set(v):
+    """CSV -> frozenset en minúsculas (keywords de variantes)."""
     return frozenset(c.strip().lower() for c in v.split(',') if c.strip())
 
 def _as_prompt(v):
+    """Plantilla de prompt: solo recorte exterior; formato interno intacto."""
     return v.strip()
 
 
@@ -192,10 +206,12 @@ class Config:
 
     @property
     def target_language_codes_set(self) -> frozenset:
+        """Set de códigos objetivo derivado (para pertenencia O(1))."""
         return frozenset(self.target_language_codes)
 
     @property
     def primary_target_code(self) -> str:
+        """Primer código objetivo (se usa como código MKV de la pista nueva)."""
         return self.target_language_codes[0]
 
 
@@ -219,6 +235,7 @@ def load_config(path, capture_warnings: bool = False):
     warnings_out = []
 
     def _warn(msg):
+        """Registra en log Y acumula para quien pida capture_warnings=True."""
         logging.warning("%s", msg)
         warnings_out.append(msg)
 

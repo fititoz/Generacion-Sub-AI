@@ -5,6 +5,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Sin publicar]
 
+### Added
+- **Pisos de versión en dependencias** (`requirements.txt` + instalador runtime vía `PACKAGE_FLOORS`): toda instalación usa `paquete>=última verificada` al 2026-08-23 (openai 3.3.1, pysubs2 1.8.1, pymkv 1.0.8, numpy 2.4.6, scipy 1.17.1, requests 2.34.2, soundfile 0.14.0); pip resuelve la mayor compatible si el host es más viejo.
+- **`src/phases.py`** — fases testeables extraídas de `process_file` (probe `-J`, análisis pymkv, escaneo de pistas/objetivo, extracción, carga con cascada de encodings, recolección/traducción/aplicación). `process_file` baja de ~990 a 806 líneas y su parte media ya es testeable sin importar el entry script.
+- **Módulo `src/remux.py`** — dueño único de la ejecución mkvmerge: exit-codes oficiales (rc≤1 éxito), timeout único de 900s, temporales atómicos con `os.replace`, validación ligera siempre y profunda (probe `-J`: video + duración ±10s) antes de cualquier reemplazo destructivo. Tres envoltorios (`embed_translation`, `embed_chapters`, `reorder_and_save`) mantienen los call sites casi intactos; stub binario como segundo adapter para tests.
+
+### Fixed
+- **Cierre del bucle infinito de reencolado (S1 principal)**: `mkvmerge` exit code 1 son *warnings* con salida válida según la documentación oficial — ya no se trata como error que borraba el mux correcto y hacía que Sonarr reencolara el mismo episodio para siempre. Los tres sitios de invocación (traducción, capítulos standalone, reordenamiento) comparten ahora política, timeout de 900s y limpieza garantizada de temporales.
+
+### Changed
+- **Pasada de documentación**: cobertura completa de docstrings en funciones y clases del producto (57 añadidos), comentarios obsoletos corregidos o eliminados (header de versión engañoso, marcadores "CORREGIDO", notas estilo changelog "NUEVO/MEJORA") y banners de fase alineados con la delegación a `src/remux.py`/`src/phases.py`.
+
 ### Fixed
 - **SIGTERM mata el proceso de verdad**: el handler guardaba caché y luego hacía `sys.exit(0)`, elevando una `SystemExit` que `process_file` tragaba — el batch continuaba tras el kill y el proceso terminaba con código 0. Ahora guarda caché y re-envía la señal con el handler por defecto.
 - **`.ogg/.opus/.webm` van directos a ffmpeg** en el cargador de audio de capítulos: libsndfile falla siempre con esos formatos; antes se pagaba el intento fallido por cada tema (2× por episodio).

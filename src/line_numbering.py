@@ -35,7 +35,7 @@ def parse_numbered_response(response: str, expected_count: int) -> dict[int, str
     Parses a response where lines are prefixed with [N]:
     Returns a dictionary mapping 1-based index to translated text.
     
-    MEJORA: Soporta múltiples formatos de respuesta de la IA.
+    Tolerancia: acepta variantes de numeración que producen los modelos.
     """
     results = {}
 

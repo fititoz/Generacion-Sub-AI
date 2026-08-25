@@ -11,6 +11,7 @@ import importlib.metadata
 from src.constants import REQUIRED_PACKAGES
 
 def check_and_install_dependencies():
+    """Verifica paquetes core; en headless aborta, en interactivo ofrece instalarlos."""
     missing_packages = []
     print("--- Verificando Dependencias (usando importlib.metadata) ---")
     for import_name, pip_name in REQUIRED_PACKAGES.items():
@@ -40,7 +41,7 @@ def check_and_install_dependencies():
             for package in packages_to_install:
                 print(f"\nInstalando {package}...");
                 try:
-                    subprocess.check_call([python_executable, "-m", "pip", "install", "--upgrade", package])
+                    subprocess.check_call([python_executable, "-m", "pip", "install", "--upgrade", _install_spec(package)])
                     print(f"¡{package} OK!")
                 except Exception as e:
                     print(f"ERROR instalando {package}: {e}", file=sys.stderr)
@@ -96,7 +97,7 @@ def check_and_install_chapter_deps():
     for package in missing:
         try:
             subprocess.check_call(
-                [python_executable, "-m", "pip", "install", "--upgrade", package],
+                [python_executable, "-m", "pip", "install", "--upgrade", _install_spec(package)],
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.PIPE,
             )
@@ -115,3 +116,12 @@ def check_and_install_chapter_deps():
     
     print("[Chapters] Todas las dependencias de capítulos instaladas correctamente.")
     return True
+
+def _install_spec(pip_name: str) -> str:
+    """Especificación de instalación con piso de versión si existe."""
+    try:
+        from src.constants import PACKAGE_FLOORS
+        floor = PACKAGE_FLOORS.get(pip_name)
+    except Exception:
+        floor = None
+    return f"{pip_name}>={floor}" if floor else pip_name

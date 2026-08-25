@@ -14,6 +14,7 @@ from pathlib import Path
 from src.constants import LOG_FILENAME
 
 def setup_logging(debug_mode: bool = False):
+    """Configura handlers archivo(rotativo)/consola y silencia SDKs ruidosos."""
     log_formatter_file = logging.Formatter('%(asctime)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s')
     log_formatter_console = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
 
@@ -35,6 +36,7 @@ def setup_logging(debug_mode: bool = False):
         """Corta trazas internas del SDK (p. ej. _trace.py close.started/complete)
         pase lo que pase con el nombre del logger emisor."""
         def filter(self, record):
+            """Filtra trazas internas _trace.py pase lo que pase con el nombre del logger."""
             return record.filename != "_trace.py"
 
     sdk_trace_filter = _SdkTraceFilter()

@@ -19,19 +19,23 @@ _LITERAL_ESCAPED_RE = re.compile(
 
 
 def _escape_literal_tags(text: str) -> str:
+    """Escapa literales __TAGn__ -> __TAGLn__ (no colliden con placeholders)."""
     return _LITERAL_TAG_RE.sub(r"\g<1>L\g<2>\g<3>", text)
 
 
 def _unescape_literal_tags(text: str) -> str:
+    """Operación inversa del escape, al final de restore_tags."""
     return _LITERAL_ESCAPED_RE.sub(f"{PLACEHOLDER_PREFIX}\\g<1>{PLACEHOLDER_SUFFIX}", text)
 
 
 def extract_tags(text: str):
+    """Extrae tags (linebreaks primero, luego ASS/HTML) -> (texto_limpio, tags)."""
     tags = []
     tag_index = 0
     text = _escape_literal_tags(text)
 
     def replacer(match):
+        """Acumula el tag encontrado y devuelve su placeholder numerado."""
         nonlocal tag_index
         tag = match.group(0)
         tags.append(tag)
@@ -51,6 +55,7 @@ def extract_tags(text: str):
     return cleaned_text, tags
 
 def restore_tags(translated_text: str, original_tags: list):
+    """Restaura tags por posición; faltantes quedan visibles para el validador."""
     if not original_tags:
         return translated_text
 
