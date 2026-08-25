@@ -3,7 +3,7 @@
 All notable changes to this project will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
-## [Sin publicar]
+## [2026.08.10] - 2026-08-25
 
 ### Added
 - **Pisos de versión en dependencias** (`requirements.txt` + instalador runtime vía `PACKAGE_FLOORS`): toda instalación usa `paquete>=última verificada` al 2026-08-23 (openai 3.3.1, pysubs2 1.8.1, pymkv 1.0.8, numpy 2.4.6, scipy 1.17.1, requests 2.34.2, soundfile 0.14.0); pip resuelve la mayor compatible si el host es más viejo.
