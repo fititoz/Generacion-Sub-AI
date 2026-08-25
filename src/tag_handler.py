@@ -9,9 +9,27 @@ import re
 import logging
 from src.constants import TAG_REGEX, LINEBREAK_REGEX, PLACEHOLDER_PREFIX, PLACEHOLDER_SUFFIX
 
+# Literales __TAGn__ preexistentes se escapan a __TAGLn__ durante la
+# extracción y se des-escapan al restaurar: así nunca colisionan con los
+# placeholders reales (B-TAG) y el modelo tampoco los ve como instrucción.
+_LITERAL_TAG_RE = re.compile(
+    f"({re.escape(PLACEHOLDER_PREFIX)})(\\d+)({re.escape(PLACEHOLDER_SUFFIX)})")
+_LITERAL_ESCAPED_RE = re.compile(
+    f"{re.escape(PLACEHOLDER_PREFIX)}L(\\d+){re.escape(PLACEHOLDER_SUFFIX)}")
+
+
+def _escape_literal_tags(text: str) -> str:
+    return _LITERAL_TAG_RE.sub(r"\g<1>L\g<2>\g<3>", text)
+
+
+def _unescape_literal_tags(text: str) -> str:
+    return _LITERAL_ESCAPED_RE.sub(f"{PLACEHOLDER_PREFIX}\\g<1>{PLACEHOLDER_SUFFIX}", text)
+
+
 def extract_tags(text: str):
     tags = []
     tag_index = 0
+    text = _escape_literal_tags(text)
 
     def replacer(match):
         nonlocal tag_index
@@ -59,5 +77,8 @@ def restore_tags(translated_text: str, original_tags: list):
         logging.warning("Total placeholders no encontrados: %d", len(placeholders_missing))
     elif placeholders_found != len(original_tags) and original_tags:
         logging.warning("Discrepancia conteo placeholders: Esperados=%d, Restaurados=%d", len(original_tags), placeholders_found)
+
+    # Des-escapar literales __TAGLn__ -> __TAGn__ del texto original
+    restored_text = _unescape_literal_tags(restored_text)
 
     return restored_text

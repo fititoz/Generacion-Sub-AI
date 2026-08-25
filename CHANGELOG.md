@@ -3,6 +3,18 @@
 All notable changes to this project will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [Sin publicar]
+
+### Fixed
+- **SIGTERM mata el proceso de verdad**: el handler guardaba caché y luego hacía `sys.exit(0)`, elevando una `SystemExit` que `process_file` tragaba — el batch continuaba tras el kill y el proceso terminaba con código 0. Ahora guarda caché y re-envía la señal con el handler por defecto.
+- **`.ogg/.opus/.webm` van directos a ffmpeg** en el cargador de audio de capítulos: libsndfile falla siempre con esos formatos; antes se pagaba el intento fallido por cada tema (2× por episodio).
+- **`und` sin tag ya no se selecciona como pista fuente**: un sub sin idioma suele ser ya el objetivo; traducirlo era eco español→español silencioso.
+- **`reorder_tracks` ahora lee `language_ietf`**: un sub `es-419` etiquetado solo vía IETF era invisible para la priorización "Latino primero" (caía al tier genérico y perdía el default). Añadida normalización a minúsculas.
+- **Literales `__TAGn__` en el texto original ya no corrompen la restauración**: se escapan durante la extracción (`__TAGLn__`) y se des-escapan al final — el primer placeholder real ya no puede chocar contra el literal.
+- **La caché rechaza de verdad entradas con placeholders sin restaurar**: antes las logueaba y las guardaba igual, envenenando corridas futuras (`TranslationCache.set`).
+- **Correcciones del validador ya no se neutralizan ni se pierden**: las líneas flaggeadas invalidan su entrada stale antes de re-traducirse (el fallback individual releía el valor malo) y la corrección exitosa se re-cachea — elimina el costo API recurrente por corrida observado como `Corregidas=2/2` constante.
+- Nuevo `TranslationCache.delete()` para invalidación puntual.
+
 ## [2026.08.9] - 2026-08-23
 
 ### Changed

@@ -63,11 +63,17 @@ class TranslationCache:
     def get(self, key):
         return self.cache.get(key)
 
+    def delete(self, key):
+        """Invalida una entrada en memoria (queda persistida al próximo save)."""
+        self.cache.pop(key, None)
+
     def set(self, key, value):
         if self.enable_cache:
-            # Guardia: no cachear texto con placeholders sin restaurar
+            # Guardia: no cachear texto con placeholders sin restaurar.
+            # Rechaza de verdad (antes solo logueaba y guardaba igual).
             if contains_placeholder(value):
-                logging.warning("[CACHE] Rechazado guardado con placeholder sin restaurar. key=%r value=%r", key[:80], value[:120])
+                logging.warning("[CACHE] Entrada rechazada: placeholder sin restaurar. key=%r", key[:80])
+                return
             self.cache[key] = value
             if len(self.cache) > self.max_entries:
                 self._prune_cache()

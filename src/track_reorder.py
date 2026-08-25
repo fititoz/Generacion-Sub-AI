@@ -41,7 +41,12 @@ def reorder_tracks(mkv_path: Path, mkv_info: dict, cfg, tool_paths: dict, chapte
         tid = track['id']
         ttype = track['type']
         props = track.get('properties', {})
-        lang = props.get('language', 'und')
+        # Ambos códigos cuentan para los tiers: language_ietf ('es-419')
+        # prioriza, pero el legacy ('spa') sigue clasificando aunque el IETF
+        # traiga una variante no reconocida (p. ej. 'es-ES').
+        lang_legacy = (props.get('language') or '').strip().lower()
+        lang_ietf = (props.get('language_ietf') or '').strip().lower()
+        langs = {c for c in (lang_ietf, lang_legacy) if c}
         name = props.get('track_name', '').lower()
         
         # Clasificación
@@ -54,8 +59,8 @@ def reorder_tracks(mkv_path: Path, mkv_info: dict, cfg, tool_paths: dict, chapte
             is_spain = False
             is_generic_spanish = False
             
-            # 1. Chequeo por código estricto
-            if lang in latino_codes:
+            # 1. Chequeo por código estricto (IETF o legacy)
+            if any(c in latino_codes for c in langs):
                 is_latino = True
             # 2. Chequeo por keywords en nombre (prioridad sobre código genérico 'spa')
             elif any(kw in name for kw in latino_kws):
@@ -63,7 +68,7 @@ def reorder_tracks(mkv_path: Path, mkv_info: dict, cfg, tool_paths: dict, chapte
             elif any(kw in name for kw in spain_kws):
                 is_spain = True
             # 3. Genérico (spa/es) sin keywords específicas
-            elif lang in generic_spanish_codes:
+            elif any(c in generic_spanish_codes for c in langs):
                 is_generic_spanish = True
             
             if is_latino:

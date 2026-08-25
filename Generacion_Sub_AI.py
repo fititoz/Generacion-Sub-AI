@@ -147,7 +147,11 @@ def select_subtitle_track(tracks, track_codecs, cfg):
             if is_image:
                 logging.info("  * ID=%s es imagen (%s), ignorando.", tid, codec)
                 image_subs_found.append(t)
-            elif lang not in target_codes_set or lang == 'und':
+            elif lang == 'und':
+                # Sin tag no hay fuente confiable: un sub 'und' suele ser ya
+                # el idioma objetivo; traducirlo sería eco español->español.
+                logging.debug("  - Ignorada ID=%s (idioma 'und' sin tag confiable como fuente).", tid)
+            elif lang not in target_codes_set:
                 logging.debug("  + Candidata ID=%s", tid)
                 candidates.append(t)
             else:
@@ -165,9 +169,8 @@ def select_subtitle_track(tracks, track_codecs, cfg):
         codec = track_codecs.get(tid, '?')
         logging.info("Selección: Pref ID %s (Lang '%s', Codec '%s').", tid, lang, codec)
         return pref
-    non_und = [t for t in candidates if (getattr(t, 'language', 'und') or 'und') != 'und']
-    if non_und:
-        first = non_und[0]
+    if candidates:
+        first = candidates[0]
         tid = getattr(first, 'track_id', '?')
         lang = getattr(first, 'language', 'und') or 'und'
         codec = track_codecs.get(tid, '?')
@@ -939,9 +942,14 @@ def main():
 
     def _sigterm_handler(signum, frame):
         logging.warning("SIGTERM recibido. Guardando caché antes de salir...")
-        if 'translation_cache' in locals() and cfg.enable_translation_cache:
+        try:
             translation_cache.save_cache()
-        sys.exit(0)
+        except Exception:
+            logging.exception("No se pudo guardar la caché en SIGTERM")
+        # sys.exit(0) aquí elevaba SystemExit que process_file tragaba:
+        # el batch seguía y el proceso terminaba 0 pese al kill.
+        signal.signal(signal.SIGTERM, signal.SIG_DFL)
+        os.kill(os.getpid(), signal.SIGTERM)
     signal.signal(signal.SIGTERM, _sigterm_handler)
 
     try:

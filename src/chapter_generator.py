@@ -511,7 +511,8 @@ def load_and_downsample(audio_path: Path, downsample_factor: int) -> Optional[Tu
 
     CRITICAL: Always resamples to sr=22050 for consistency between episode and theme audio.
     Uses soundfile instead of librosa to avoid heavy dependencies (scikit-learn, numba).
-    Falls back to ffmpeg conversion for OGG Opus files that libsndfile can't decode.
+    OGG/Opus/WebM sources are converted to WAV via ffmpeg first (libsndfile
+    can't decode them), so no failed attempt is wasted.
     """
     try:
         import soundfile as sf
@@ -520,34 +521,27 @@ def load_and_downsample(audio_path: Path, downsample_factor: int) -> Optional[Tu
         target_sr = 22050
         logging.debug("[Chapters] Cargando audio: %s", audio_path.name)
 
-        # Try soundfile first (works for WAV and most formats)
-        try:
-            data, sr_native = sf.read(str(audio_path), dtype='float32')
-        except Exception as sf_err:
-            # Fallback: convert to WAV via ffmpeg (handles OGG Opus that libsndfile can't decode)
-            if audio_path.suffix.lower() in ('.ogg', '.opus', '.webm'):
-                logging.debug("[Chapters] soundfile falló para '%s' (%s). Intentando conversión ffmpeg...",
-                              audio_path.name, sf_err)
-                wav_path = audio_path.with_suffix('.wav')
-                try:
-                    import subprocess
-                    proc = subprocess.run(
-                        [BIN_FFMPEG, '-i', str(audio_path), '-ac', '1', '-ar', str(target_sr),
-                         '-y', str(wav_path)],
-                        capture_output=True, text=True, encoding='utf-8', errors='replace',
-                        timeout=60,
-                    )
-                    if proc.returncode != 0 or not wav_path.exists():
-                        logging.warning("[Chapters] ffmpeg conversión falló para '%s': %s",
-                                        audio_path.name, proc.stderr[-300:] if proc.stderr else '')
-                        return None
-                    data, sr_native = sf.read(str(wav_path), dtype='float32')
-                    logging.debug("[Chapters] Audio convertido via ffmpeg: %s -> %s", audio_path.name, wav_path.name)
-                except Exception as ff_err:
-                    logging.warning("[Chapters] Fallback ffmpeg falló para '%s': %s", audio_path.name, ff_err)
-                    return None
-            else:
-                raise sf_err  # Re-raise for non-OGG files
+        # Los .ogg/.opus/.webm de animethemes NO son decodificables por
+        # libsndfile (falla sistemática): convertir a WAV directamente en
+        # vez de intentar soundfile y pagar el fallo cada vez.
+        if audio_path.suffix.lower() in ('.ogg', '.opus', '.webm'):
+            import subprocess
+            wav_path = audio_path.with_suffix('.wav')
+            logging.debug("[Chapters] Formato %s: convirtiendo a WAV vía ffmpeg...",
+                          audio_path.suffix)
+            proc = subprocess.run(
+                [BIN_FFMPEG, '-i', str(audio_path), '-ac', '1', '-ar', str(target_sr),
+                 '-y', str(wav_path)],
+                capture_output=True, text=True, encoding='utf-8', errors='replace',
+                timeout=60,
+            )
+            if proc.returncode != 0 or not wav_path.exists():
+                logging.warning("[Chapters] ffmpeg conversión falló para '%s': %s",
+                                audio_path.name, proc.stderr[-300:] if proc.stderr else '')
+                return None
+            audio_path = wav_path
+
+        data, sr_native = sf.read(str(audio_path), dtype='float32')
 
         # Convert stereo to mono if needed (soundfile returns (samples, channels) for stereo)
         if data.ndim > 1:

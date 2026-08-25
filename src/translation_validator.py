@@ -155,6 +155,13 @@ class TranslationCorrector:
             logging.debug(f"{issues_count} líneas con avisos no críticos. Sin re-traducción.")
             return all_translations
 
+        # Invalidar entradas stale ANTES de corregir: si no, el fallback
+        # individual releía el valor malo del caché (neutralizando la
+        # corrección) y la versión flaggeada sobrevivía entre corridas.
+        if self.cache is not None:
+            for res in critical_results:
+                self.cache.delete(res.original)
+
         logging.info(f"Re-traduyendo {len(critical_results)} líneas con errores críticos (batch de corrección):")
         for res in critical_results:
             # Mostrar POR QUÉ se re-traduce cada línea: issues + par orig/trad truncado
@@ -172,10 +179,12 @@ class TranslationCorrector:
         try:
             batch_translations = self._translate_error_batch(error_originals)
 
-            # 3. Mapear resultados a índices originales
-            for idx, trans in zip(error_indices, batch_translations):
+            # 3. Mapear resultados a índices originales y re-cachear los fix
+            for idx, orig, trans in zip(error_indices, error_originals, batch_translations):
                 if trans and trans.strip():
                     all_translations[idx] = trans
+                    if self.cache is not None:
+                        self.cache.set(orig, trans)
                     logging.debug(f"  Línea {idx + 1} corregida via batch: {trans[:60]}...")
                 else:
                     logging.warning(f"  Línea {idx + 1}: batch devolvió vacío, fallback a individual")
